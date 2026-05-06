@@ -13,11 +13,12 @@ dask = "*"
 pystac-client = "*"
 odc-stac = "*"
 odc-geo = "*"
+geopandas = "*"
+geodatasets = "*"
 
 [feature.dev.dependencies]
 jupyterlab = "*"
 matplotlib = "*"
-cartopy = "*"
 
 [environments]
 default = { features = ["dev"] }

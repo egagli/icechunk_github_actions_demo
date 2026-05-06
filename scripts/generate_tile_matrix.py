@@ -1,6 +1,6 @@
 """Generate the GitHub Actions matrix of unprocessed land tiles.
 
-Reads tile_list.json (pre-computed, committed to the repo) and the Icechunk
+Reads tile_list.geojson (pre-computed, committed to the repo) and the Icechunk
 commit history to find already-processed tiles, then prints the remainder as JSON.
 
 No external status log is maintained — Icechunk commit history is the
@@ -12,6 +12,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import icechunk
-from utils import get_storage, load_tile_list
+from utils import load_tile_list
 
 
 def processed_tiles(repo):
@@ -34,10 +35,16 @@ def processed_tiles(repo):
 
 
 def main():
-    storage = get_storage()
+    storage = icechunk.azure_storage(
+        account=os.environ["AZURE_STORAGE_ACCOUNT"],
+        container=os.environ["AZURE_CONTAINER"],
+        prefix=os.environ["ICECHUNK_PREFIX"],
+        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+    )
     repo = icechunk.Repository.open(storage)
 
-    land = load_tile_list()
+    tile_gdf = load_tile_list()
+    land = [{"row": int(r["row"]), "col": int(r["col"])} for _, r in tile_gdf.iterrows()]
     done = processed_tiles(repo)
     unprocessed = [t for t in land if (t["row"], t["col"]) not in done]
 

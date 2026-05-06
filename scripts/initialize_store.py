@@ -4,6 +4,7 @@ Run once before processing any tiles. Writes only metadata and coordinates;
 no data chunks are created until tile runners fill them in.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,7 +14,7 @@ import dask.array as da
 import icechunk
 import numpy as np
 import xarray as xr
-from utils import get_storage, load_config
+from utils import load_config
 
 
 def main():
@@ -65,7 +66,13 @@ def main():
 
     print(f"Dataset to initialize:\n{ds}\n")
 
-    storage = get_storage()
+    storage = icechunk.azure_storage(
+        account=os.environ["AZURE_STORAGE_ACCOUNT"],
+        container=os.environ["AZURE_CONTAINER"],
+        prefix=os.environ["ICECHUNK_PREFIX"],
+        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+    )
+
     print("Creating Icechunk repository...")
     repo = icechunk.Repository.create(storage)
     session = repo.writable_session("main")

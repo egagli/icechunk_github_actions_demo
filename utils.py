@@ -1,7 +1,5 @@
 """Shared utilities for all scripts and notebooks."""
 
-import json
-import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent
@@ -28,16 +26,6 @@ def load_config():
 
 
 def load_tile_list():
-    """Return list of {row, col} dicts from the committed tile_list.json."""
-    with open(REPO_ROOT / "tile_list.json") as f:
-        return json.load(f)
-
-
-def get_storage():
-    import icechunk
-    return icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
-    )
+    """Return GeoDataFrame of land tiles from the committed tile_list.geojson."""
+    import geopandas as gpd
+    return gpd.read_file(REPO_ROOT / "tile_list.geojson")

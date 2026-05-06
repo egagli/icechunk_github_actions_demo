@@ -5,6 +5,7 @@ available years are written to the store in a single Icechunk commit.
 """
 
 import argparse
+import os
 import random
 import sys
 import time
@@ -18,7 +19,7 @@ import odc.stac
 import pystac_client
 import xarray as xr
 from odc.geo.geobox import GeoBox
-from utils import get_storage, load_config
+from utils import load_config
 
 
 def tile_bbox(tile_row, tile_col, tile_size_deg):
@@ -94,7 +95,12 @@ def main(tile_row, tile_col):
     lat_start = tile_row * PIXELS_PER_TILE
     lon_start = tile_col * PIXELS_PER_TILE
 
-    storage = get_storage()
+    storage = icechunk.azure_storage(
+        account=os.environ["AZURE_STORAGE_ACCOUNT"],
+        container=os.environ["AZURE_CONTAINER"],
+        prefix=os.environ["ICECHUNK_PREFIX"],
+        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+    )
     repo = icechunk.Repository.open(storage)
 
     print(f"Writing {len(per_year)} year(s) to store...")
