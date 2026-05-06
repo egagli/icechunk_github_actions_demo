@@ -4,34 +4,32 @@ Run once before processing any tiles. Writes only metadata and coordinates;
 no data chunks are created until tile runners fill them in.
 """
 
-import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import dask.array as da
 import icechunk
 import numpy as np
 import xarray as xr
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import FILL_VALUE, PIXELS_PER_TILE, RESOLUTION, TILE_COLS, TILE_ROWS, YEARS
-
-
-def get_storage():
-    return icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
-    )
+from utils import get_storage, load_config
 
 
 def main():
-    n_lat = TILE_ROWS * PIXELS_PER_TILE  # 18000
-    n_lon = TILE_COLS * PIXELS_PER_TILE  # 36000
+    cfg = load_config()
+    YEARS = cfg["YEARS"]
+    RESOLUTION = cfg["RESOLUTION"]
+    PIXELS_PER_TILE = cfg["PIXELS_PER_TILE"]
+    TILE_ROWS = cfg["TILE_ROWS"]
+    TILE_COLS = cfg["TILE_COLS"]
+    FILL_VALUE = cfg["FILL_VALUE"]
+
+    n_lat = TILE_ROWS * PIXELS_PER_TILE
+    n_lon = TILE_COLS * PIXELS_PER_TILE
     shape = (len(YEARS), n_lat, n_lon)
     chunks = (1, PIXELS_PER_TILE, PIXELS_PER_TILE)
 
-    # Pixel-center coordinates: lats descend from 90, lons ascend from -180
     lats = np.arange(90, -90, -RESOLUTION) - RESOLUTION / 2
     lons = np.arange(-180, 180, RESOLUTION) + RESOLUTION / 2
 
@@ -60,7 +58,7 @@ def main():
         coords={"year": np.array(YEARS), "latitude": lats, "longitude": lons},
     )
     ds.attrs = {
-        "title": "MODIS MOD11A2 Annual Daytime Land Surface Temperature (2020-2022)",
+        "title": "MODIS MOD11A2 Annual Daytime Land Surface Temperature",
         "source": "MODIS Terra MOD11A2 Version 6.1 via Microsoft Planetary Computer",
         "Conventions": "CF-1.8",
     }
@@ -73,8 +71,6 @@ def main():
     session = repo.writable_session("main")
 
     print(f"Writing empty template (shape={shape}, chunks={chunks})...")
-    # compute=False: write only metadata/coordinates, not data arrays
-    # write_empty_chunks=False: no chunks materialized until runners fill them
     ds.to_zarr(
         session.store,
         mode="w",
@@ -84,7 +80,7 @@ def main():
         consolidated=False,
     )
 
-    snapshot_id = session.commit("initialize store: empty template, 2020-2022")
+    snapshot_id = session.commit("initialize store: empty template")
     print(f"Done. Snapshot ID: {snapshot_id}")
 
 

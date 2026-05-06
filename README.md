@@ -229,8 +229,9 @@ second workflow as a reusable [`workflow_call`](https://docs.github.com/en/actio
 for each batch. See [`process_batch_large.yml`](https://github.com/egagli/global_snowmelt_runoff_onset/blob/main/.github/workflows/process_batch_large.yml)
 in `global_snowmelt_runoff_onset` for a worked example.
 
-This demo's ~200 land tiles fit comfortably within the 256-job limit, so a
-single batch is sufficient.
+This demo has 464 land tiles (at 10°×10° resolution, many ocean tiles still
+intersect small islands), which exceeds the 256-job limit. To run the full
+dataset you will need the batches-of-batches pattern linked above.
 
 ---
 
@@ -284,17 +285,19 @@ related projects, to help you choose the right pattern for your dataset.
 
 ## Configuration
 
-All tuneable parameters are in [`config.py`](config.py):
+All tuneable parameters are in [`config.txt`](config.txt):
 
-```python
-YEARS = [2020, 2021, 2022]
-RESOLUTION = 0.01        # degrees per pixel
-TILE_SIZE_DEG = 10.0     # degrees per tile edge
-PIXELS_PER_TILE = 1000   # = TILE_SIZE_DEG / RESOLUTION
+```ini
+YEARS = 2020,2021,2022
+RESOLUTION = 0.01
+TILE_SIZE_DEG = 10.0
+PIXELS_PER_TILE = 1000
 TILE_ROWS = 18
 TILE_COLS = 36
 FILL_VALUE = 0
 ```
 
-To adapt this demo for a different dataset, update `config.py` and replace the
-data fetching logic in `scripts/process_tile.py`.
+Parsed at runtime by `utils.load_config()`. To adapt this demo for a different
+dataset, update `config.txt`, regenerate `tile_list.json` by re-running
+notebook `01_initialize_and_setup.ipynb`, and replace the data fetching logic
+in `scripts/process_tile.py`.

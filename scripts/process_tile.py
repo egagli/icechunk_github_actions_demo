@@ -5,10 +5,12 @@ available years are written to the store in a single Icechunk commit.
 """
 
 import argparse
-import os
 import random
 import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import icechunk
 import numpy as np
@@ -16,31 +18,18 @@ import odc.stac
 import pystac_client
 import xarray as xr
 from odc.geo.geobox import GeoBox
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import FILL_VALUE, PIXELS_PER_TILE, RESOLUTION, TILE_SIZE_DEG, YEARS
+from utils import get_storage, load_config
 
 
-def get_storage():
-    return icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
-    )
-
-
-def tile_bbox(tile_row, tile_col):
-    """Return (lat_min, lat_max, lon_min, lon_max) for a tile."""
-    lat_min = -90 + tile_row * TILE_SIZE_DEG
-    lat_max = lat_min + TILE_SIZE_DEG
-    lon_min = -180 + tile_col * TILE_SIZE_DEG
-    lon_max = lon_min + TILE_SIZE_DEG
+def tile_bbox(tile_row, tile_col, tile_size_deg):
+    lat_min = -90 + tile_row * tile_size_deg
+    lat_max = lat_min + tile_size_deg
+    lon_min = -180 + tile_col * tile_size_deg
+    lon_max = lon_min + tile_size_deg
     return lat_min, lat_max, lon_min, lon_max
 
 
-def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year):
-    """Fetch MOD11A2 LST for one year, apply QC mask, return (avg, max) as uint16 arrays."""
+def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, pixels_per_tile):
     items = catalog.search(
         collections=["modis-11A2-061"],
         bbox=[lon_min, lat_min, lon_max, lat_max],
@@ -54,11 +43,10 @@ def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year):
         items,
         bands=["LST_Day_1km", "QC_Day"],
         geobox=geobox,
-        # odc.stac uses x/y for chunk keys regardless of output coord names
-        chunks={"time": 1, "x": PIXELS_PER_TILE, "y": PIXELS_PER_TILE},
+        chunks={"time": 1, "x": pixels_per_tile, "y": pixels_per_tile},
     )
 
-    # QC_Day bits 0-1: 0b00 = mandatory QA passed (good), 0b01 = nominal quality
+    # QC_Day bits 0-1: 0b00 = good, 0b01 = nominal quality
     good = (ds.QC_Day & 0b11) <= 1
     lst = ds.LST_Day_1km.where(good).where(ds.LST_Day_1km >= 7500)
 
@@ -68,7 +56,13 @@ def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year):
 
 
 def main(tile_row, tile_col):
-    lat_min, lat_max, lon_min, lon_max = tile_bbox(tile_row, tile_col)
+    cfg = load_config()
+    YEARS = cfg["YEARS"]
+    RESOLUTION = cfg["RESOLUTION"]
+    TILE_SIZE_DEG = cfg["TILE_SIZE_DEG"]
+    PIXELS_PER_TILE = cfg["PIXELS_PER_TILE"]
+
+    lat_min, lat_max, lon_min, lon_max = tile_bbox(tile_row, tile_col, TILE_SIZE_DEG)
     print(
         f"Tile ({tile_row}, {tile_col}): "
         f"lat [{lat_min:.1f}, {lat_max:.1f}], lon [{lon_min:.1f}, {lon_max:.1f}]"
@@ -85,7 +79,7 @@ def main(tile_row, tile_col):
     for year in YEARS:
         print(f"  {year}: fetching...")
         avg_lst, max_lst = fetch_annual_lst(
-            catalog, geobox, lat_min, lat_max, lon_min, lon_max, year
+            catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, PIXELS_PER_TILE
         )
         if avg_lst is None:
             print(f"  {year}: no data, skipping")
@@ -94,10 +88,9 @@ def main(tile_row, tile_col):
         print(f"  {year}: done")
 
     if not per_year:
-        print("No data found for any year — ocean or ungridded tile, skipping.")
+        print("No data found for any year — skipping.")
         sys.exit(0)
 
-    # Integer-slice region: tile grid design guarantees exact alignment
     lat_start = tile_row * PIXELS_PER_TILE
     lon_start = tile_col * PIXELS_PER_TILE
 
@@ -107,7 +100,7 @@ def main(tile_row, tile_col):
     print(f"Writing {len(per_year)} year(s) to store...")
     while True:
         try:
-            session = repo.writable_session("main")  # fresh session on each attempt
+            session = repo.writable_session("main")
 
             for yr, v in per_year.items():
                 year_idx = YEARS.index(yr)
@@ -142,7 +135,7 @@ def main(tile_row, tile_col):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tile-row", type=int, required=True, help="Row index (0–17)")
-    parser.add_argument("--tile-col", type=int, required=True, help="Column index (0–35)")
+    parser.add_argument("--tile-row", type=int, required=True)
+    parser.add_argument("--tile-col", type=int, required=True)
     args = parser.parse_args()
     main(args.tile_row, args.tile_col)
