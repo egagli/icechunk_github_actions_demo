@@ -1,0 +1,36 @@
+name: Process Single Tile
+
+on:
+  workflow_dispatch:
+    inputs:
+      tile_row:
+        description: "Tile row index (0–17, where 0 = southernmost 10° band)"
+        required: true
+        type: number
+      tile_col:
+        description: "Tile column index (0–35, where 0 = westernmost 10° band)"
+        required: true
+        type: number
+
+jobs:
+  process-tile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.8.3
+        with:
+          pixi-version: v0.39.0
+          environments: ci
+
+      - name: Process tile ${{ inputs.tile_row }}-${{ inputs.tile_col }}
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_SAS_TOKEN: ${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
+          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
+          ICECHUNK_PREFIX: ${{ secrets.ICECHUNK_PREFIX }}
+        run: |
+          pixi run -e ci python scripts/process_tile.py \
+            --tile-row ${{ inputs.tile_row }} \
+            --tile-col ${{ inputs.tile_col }}
