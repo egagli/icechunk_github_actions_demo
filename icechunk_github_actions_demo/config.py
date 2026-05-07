@@ -1,7 +1,7 @@
 """Dataset configuration, global geobox, and tile utilities.
 
 Usage:
-    from icechunk_github_actions_demo import Config, load_tile_list
+    from icechunk_github_actions_demo import Config, list_processed_tiles
     config = Config("config/config_v1.txt")          # CI: credentials from env vars
     config = Config("config/config_with_secrets_v1.txt")  # local: literal credentials
 

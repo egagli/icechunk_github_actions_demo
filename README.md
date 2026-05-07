@@ -49,7 +49,7 @@ icechunk_github_actions_demo/
 │   ├── config_v1.txt               # dataset params + credentials as ENV placeholders
 │   └── config_with_secrets_v1.txt  # literal credentials for local runs (gitignored)
 ├── icechunk_github_actions_demo/   # Python package
-│   ├── __init__.py                 # exports Config, load_tile_list, processed_tiles
+│   ├── __init__.py                 # exports Config, list_processed_tiles
 │   ├── config.py                   # Config class, geobox utilities
 │   └── processing.py               # fetch_annual_lst
 ├── scripts/
@@ -144,13 +144,13 @@ session.commit("initialize store: empty template")
 
 The script determines which tiles need processing by:
 
-1. Reading `tile_list.geojson` via `load_tile_list()` (returns only `land=True` tiles)
-2. Calling `processed_tiles(repo)` to parse the Icechunk commit history for
+1. Reading `tile_list.geojson` via `gpd.read_file(config.TILE_LIST_PATH)`, filtering `land=True`
+2. Calling `list_processed_tiles(repo)` to parse the Icechunk commit history for
    messages matching `tile_R_C: processed`
 3. Subtracting processed from all land tiles
 
 **No separate status log is maintained.** The Icechunk commit history is the
-single source of truth. Both functions are provided by the
+single source of truth. `list_processed_tiles` is provided by the
 `icechunk_github_actions_demo` package and reused by notebook `02_processing_status.ipynb`.
 
 The script has two modes:
@@ -310,7 +310,7 @@ related projects, to help you choose the right pattern for your dataset.
 
 | Approach | When to use |
 | --- | --- |
-| **Icechunk commit history** (this demo) | No external log to maintain. Commit messages are the record. The `processed_tiles(repo)` helper is shared between CI scripts and the status notebook. Works as long as commit messages follow a consistent format. |
+| **Icechunk commit history** (this demo) | No external log to maintain. Commit messages are the record. The `list_processed_tiles(repo)` helper is shared between CI scripts and the status notebook. Works as long as commit messages follow a consistent format. |
 | CSV artifacts + consolidation workflow | Used in [global_snowmelt_runoff_onset](https://github.com/egagli/global_snowmelt_runoff_onset): per-tile CSVs uploaded as artifacts, merged by a separate workflow. Good when you want rich per-tile metadata (timing, error messages, pixel counts). |
 | GeoJSON + GitHub API dual-source | Used in [MODIS_snow_phenology](https://github.com/egagli/MODIS_snow_phenology): Icechunk history for successes, GitHub Actions job API for failures with log excerpts. Visualizable as a map; most robust failure attribution. |
 
