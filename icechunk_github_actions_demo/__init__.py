@@ -1,3 +1,3 @@
-from .config import Config, load_tile_list
+from .config import Config, list_processed_tiles
 
-__all__ = ["Config", "load_tile_list"]
+__all__ = ["Config", "list_processed_tiles"]

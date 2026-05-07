@@ -16,6 +16,7 @@ odc-geo = "*"
 geopandas = "*"
 geodatasets = "*"
 adlfs = ">=2026.4.0,<2027"
+planetary-computer = ">=1.0.0,<2"
 
 [feature.dev.dependencies]
 jupyterlab = "*"

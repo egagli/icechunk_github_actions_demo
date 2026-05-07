@@ -9,6 +9,7 @@ Credential fields set to "ENV" in the config file are resolved from os.environ.
 """
 
 import os
+import re
 from functools import cached_property
 from pathlib import Path
 
@@ -36,10 +37,20 @@ def geoboxtiles_to_gdf(gbt):
     )
 
 
-def load_tile_list():
-    """Return GeoDataFrame of land tiles (land=True) from the committed tile_list.geojson."""
-    gdf = gpd.read_file(REPO_ROOT / "tile_list.geojson")
-    return gdf[gdf["land"]].reset_index(drop=True)
+def list_processed_tiles(repo):
+    """Return the set of (row, col) tuples already committed to the Icechunk store.
+
+    Parses commit messages matching 'tile_R_C: processed' from the full ancestry
+    of the main branch. Icechunk commit history is the single source of truth —
+    no external status log is maintained.
+    """
+    pattern = re.compile(r"tile_(\d+)_(\d+): processed")
+    done = set()
+    for commit in repo.ancestry(branch="main"):
+        m = pattern.match(commit.message)
+        if m:
+            done.add((int(m.group(1)), int(m.group(2))))
+    return done
 
 
 class Config:
@@ -61,6 +72,8 @@ class Config:
         self.TILE_ROWS = int(raw["TILE_ROWS"])
         self.TILE_COLS = int(raw["TILE_COLS"])
         self.FILL_VALUE = int(raw["FILL_VALUE"])
+        
+        self.TILE_LIST_PATH = (REPO_ROOT / raw["TILE_LIST_PATH"])
 
         self.AZURE_STORAGE_ACCOUNT = raw["AZURE_STORAGE_ACCOUNT"]
         self.AZURE_STORAGE_SAS_TOKEN = raw["AZURE_STORAGE_SAS_TOKEN"]

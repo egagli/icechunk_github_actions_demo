@@ -3,6 +3,7 @@
 import numpy as np
 import odc.stac
 import pystac_client
+import planetary_computer
 
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
@@ -16,7 +17,7 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
     """
     bbox = tile_geobox.boundingbox
 
-    catalog = pystac_client.Client.open(STAC_URL)
+    catalog = pystac_client.Client.open(STAC_URL,modifier=planetary_computer.sign_inplace)
     items = catalog.search(
         collections=["modis-11A2-061"],
         bbox=[bbox.left, bbox.bottom, bbox.right, bbox.top],

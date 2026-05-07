@@ -12,25 +12,14 @@ Usage:
 """
 
 import json
-import re
 import sys
 from pathlib import Path
+import geopandas as gpd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import icechunk
-from icechunk_github_actions_demo import Config, load_tile_list
-
-
-def processed_tiles(repo):
-    """Parse Icechunk commit messages to find successfully processed tiles."""
-    pattern = re.compile(r"tile_(\d+)_(\d+): processed")
-    processed = set()
-    for commit in repo.ancestry(branch="main"):
-        m = pattern.match(commit.message)
-        if m:
-            processed.add((int(m.group(1)), int(m.group(2))))
-    return processed
+from icechunk_github_actions_demo import Config, list_processed_tiles
 
 
 def main():
@@ -44,9 +33,9 @@ def main():
     )
     repo = icechunk.Repository.open(storage)
 
-    tile_gdf = load_tile_list()
-    land = [{"row": int(r["row"]), "col": int(r["col"])} for _, r in tile_gdf.iterrows()]
-    done = processed_tiles(repo)
+    tile_gdf = gpd.read_file(config.TILE_LIST_PATH)
+    land = [{"row": int(r["row"]), "col": int(r["col"])} for _, r in tile_gdf.iterrows() if r["land"]]
+    done = list_processed_tiles(repo)
     unprocessed = [t for t in land if (t["row"], t["col"]) not in done]
 
     print(
