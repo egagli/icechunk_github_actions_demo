@@ -12,7 +12,6 @@ Usage:
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -20,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import icechunk
+from config import Config
 from utils import load_tile_list
 
 
@@ -35,11 +35,13 @@ def processed_tiles(repo):
 
 
 def main():
+    cfg = Config("config/config_v1.txt")
+
     storage = icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+        account=cfg.AZURE_STORAGE_ACCOUNT,
+        container=cfg.AZURE_CONTAINER,
+        prefix=cfg.ICECHUNK_PREFIX,
+        sas_token=cfg.AZURE_STORAGE_SAS_TOKEN,
     )
     repo = icechunk.Repository.open(storage)
 

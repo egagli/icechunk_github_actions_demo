@@ -1,0 +1,7 @@
+# Local config with credentials — never commit
+config/config_with_secrets*.txt
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

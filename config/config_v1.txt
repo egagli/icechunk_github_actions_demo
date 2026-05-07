@@ -1,0 +1,17 @@
+# MODIS LST dataset configuration — v1
+# Credential values set to "ENV" are read from environment variables of the same name.
+# For local use with real credentials, copy this file to config_with_secrets_v1.txt
+# and replace "ENV" with your actual values (that file is gitignored).
+
+YEARS = 2020,2021,2022
+RESOLUTION = 0.01
+TILE_SIZE_DEG = 10.0
+PIXELS_PER_TILE = 1000
+TILE_ROWS = 18
+TILE_COLS = 36
+FILL_VALUE = 0
+
+AZURE_STORAGE_ACCOUNT = ENV
+AZURE_STORAGE_SAS_TOKEN = ENV
+AZURE_CONTAINER = ENV
+ICECHUNK_PREFIX = ENV

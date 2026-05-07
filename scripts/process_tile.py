@@ -5,7 +5,6 @@ available years are written to the store in a single Icechunk commit.
 """
 
 import argparse
-import os
 import random
 import sys
 import time
@@ -18,19 +17,10 @@ import numpy as np
 import odc.stac
 import pystac_client
 import xarray as xr
-from odc.geo.geobox import GeoBox
-from utils import load_config
+from config import Config
 
 
-def tile_bbox(tile_row, tile_col, tile_size_deg):
-    lat_min = -90 + tile_row * tile_size_deg
-    lat_max = lat_min + tile_size_deg
-    lon_min = -180 + tile_col * tile_size_deg
-    lon_max = lon_min + tile_size_deg
-    return lat_min, lat_max, lon_min, lon_max
-
-
-def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, pixels_per_tile):
+def fetch_annual_lst(catalog, tile_geobox, lat_min, lat_max, lon_min, lon_max, year, pixels_per_tile):
     items = catalog.search(
         collections=["modis-11A2-061"],
         bbox=[lon_min, lat_min, lon_max, lat_max],
@@ -43,7 +33,7 @@ def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, 
     ds = odc.stac.load(
         items,
         bands=["LST_Day_1km", "QC_Day"],
-        geobox=geobox,
+        geobox=tile_geobox,
         chunks={"time": 1, "x": pixels_per_tile, "y": pixels_per_tile},
     )
 
@@ -57,13 +47,15 @@ def fetch_annual_lst(catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, 
 
 
 def main(tile_row, tile_col):
-    cfg = load_config()
-    YEARS = cfg["YEARS"]
-    RESOLUTION = cfg["RESOLUTION"]
-    TILE_SIZE_DEG = cfg["TILE_SIZE_DEG"]
-    PIXELS_PER_TILE = cfg["PIXELS_PER_TILE"]
+    cfg = Config("config/config_v1.txt")
 
-    lat_min, lat_max, lon_min, lon_max = tile_bbox(tile_row, tile_col, TILE_SIZE_DEG)
+    # tile_geobox is a direct slice of the global geobox, guaranteeing
+    # odc.stac.load output coordinates match the Zarr store exactly.
+    tile_geobox = cfg.tile_geobox(tile_row, tile_col)
+    bbox = tile_geobox.boundingbox
+    lat_min, lat_max = bbox.bottom, bbox.top
+    lon_min, lon_max = bbox.left, bbox.right
+
     print(
         f"Tile ({tile_row}, {tile_col}): "
         f"lat [{lat_min:.1f}, {lat_max:.1f}], lon [{lon_min:.1f}, {lon_max:.1f}]"
@@ -72,15 +64,12 @@ def main(tile_row, tile_col):
     catalog = pystac_client.Client.open(
         "https://planetarycomputer.microsoft.com/api/stac/v1"
     )
-    geobox = GeoBox.from_bbox(
-        [lon_min, lat_min, lon_max, lat_max], crs="EPSG:4326", resolution=RESOLUTION
-    )
 
     per_year = {}
-    for year in YEARS:
+    for year in cfg.YEARS:
         print(f"  {year}: fetching...")
         avg_lst, max_lst = fetch_annual_lst(
-            catalog, geobox, lat_min, lat_max, lon_min, lon_max, year, PIXELS_PER_TILE
+            catalog, tile_geobox, lat_min, lat_max, lon_min, lon_max, year, cfg.PIXELS_PER_TILE
         )
         if avg_lst is None:
             print(f"  {year}: no data, skipping")
@@ -92,14 +81,14 @@ def main(tile_row, tile_col):
         print("No data found for any year — skipping.")
         sys.exit(0)
 
-    lat_start = tile_row * PIXELS_PER_TILE
-    lon_start = tile_col * PIXELS_PER_TILE
+    lat_start = tile_row * cfg.PIXELS_PER_TILE
+    lon_start = tile_col * cfg.PIXELS_PER_TILE
 
     storage = icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+        account=cfg.AZURE_STORAGE_ACCOUNT,
+        container=cfg.AZURE_CONTAINER,
+        prefix=cfg.ICECHUNK_PREFIX,
+        sas_token=cfg.AZURE_STORAGE_SAS_TOKEN,
     )
     repo = icechunk.Repository.open(storage)
 
@@ -109,18 +98,18 @@ def main(tile_row, tile_col):
             session = repo.writable_session("main")
 
             for yr, v in per_year.items():
-                year_idx = YEARS.index(yr)
+                year_idx = cfg.YEARS.index(yr)
                 region = {
                     "year": slice(year_idx, year_idx + 1),
-                    "latitude": slice(lat_start, lat_start + PIXELS_PER_TILE),
-                    "longitude": slice(lon_start, lon_start + PIXELS_PER_TILE),
+                    "latitude": slice(lat_start, lat_start + cfg.PIXELS_PER_TILE),
+                    "longitude": slice(lon_start, lon_start + cfg.PIXELS_PER_TILE),
                 }
                 year_ds = xr.Dataset(
                     {
                         "avg_daytime_lst": v["avg"].expand_dims(year=[yr]),
                         "max_daytime_lst": v["max"].expand_dims(year=[yr]),
                     }
-                ).chunk({"year": 1, "latitude": PIXELS_PER_TILE, "longitude": PIXELS_PER_TILE})
+                ).chunk({"year": 1, "latitude": cfg.PIXELS_PER_TILE, "longitude": cfg.PIXELS_PER_TILE})
 
                 year_ds.to_zarr(
                     session.store, region=region, zarr_format=3, consolidated=False

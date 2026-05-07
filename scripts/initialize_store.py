@@ -4,7 +4,6 @@ Run once before processing any tiles. Writes only metadata and coordinates;
 no data chunks are created until tile runners fill them in.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,30 +13,24 @@ import dask.array as da
 import icechunk
 import numpy as np
 import xarray as xr
-from utils import load_config
+from config import Config
 
 
 def main():
-    cfg = load_config()
-    YEARS = cfg["YEARS"]
-    RESOLUTION = cfg["RESOLUTION"]
-    PIXELS_PER_TILE = cfg["PIXELS_PER_TILE"]
-    TILE_ROWS = cfg["TILE_ROWS"]
-    TILE_COLS = cfg["TILE_COLS"]
-    FILL_VALUE = cfg["FILL_VALUE"]
+    cfg = Config("config/config_v1.txt")
 
-    n_lat = TILE_ROWS * PIXELS_PER_TILE
-    n_lon = TILE_COLS * PIXELS_PER_TILE
-    shape = (len(YEARS), n_lat, n_lon)
-    chunks = (1, PIXELS_PER_TILE, PIXELS_PER_TILE)
+    n_lat = cfg.TILE_ROWS * cfg.PIXELS_PER_TILE
+    n_lon = cfg.TILE_COLS * cfg.PIXELS_PER_TILE
+    shape = (len(cfg.YEARS), n_lat, n_lon)
+    chunks = (1, cfg.PIXELS_PER_TILE, cfg.PIXELS_PER_TILE)
 
-    lats = np.arange(90, -90, -RESOLUTION) - RESOLUTION / 2
-    lons = np.arange(-180, 180, RESOLUTION) + RESOLUTION / 2
+    lats = np.arange(90, -90, -cfg.RESOLUTION) - cfg.RESOLUTION / 2
+    lons = np.arange(-180, 180, cfg.RESOLUTION) + cfg.RESOLUTION / 2
 
     var_attrs = {
         "scale_factor": np.float32(0.02),
         "add_offset": np.float32(0.0),
-        "_FillValue": FILL_VALUE,
+        "_FillValue": cfg.FILL_VALUE,
         "valid_range": [7500, 65535],
         "units": "K",
         "grid_mapping": "spatial_ref",
@@ -46,17 +39,17 @@ def main():
     ds = xr.Dataset(
         {
             "avg_daytime_lst": xr.DataArray(
-                da.full(shape, np.uint16(FILL_VALUE), dtype=np.uint16, chunks=chunks),
+                da.full(shape, np.uint16(cfg.FILL_VALUE), dtype=np.uint16, chunks=chunks),
                 dims=["year", "latitude", "longitude"],
                 attrs={**var_attrs, "long_name": "Annual mean daytime land surface temperature"},
             ),
             "max_daytime_lst": xr.DataArray(
-                da.full(shape, np.uint16(FILL_VALUE), dtype=np.uint16, chunks=chunks),
+                da.full(shape, np.uint16(cfg.FILL_VALUE), dtype=np.uint16, chunks=chunks),
                 dims=["year", "latitude", "longitude"],
                 attrs={**var_attrs, "long_name": "Annual maximum daytime land surface temperature"},
             ),
         },
-        coords={"year": np.array(YEARS), "latitude": lats, "longitude": lons},
+        coords={"year": np.array(cfg.YEARS), "latitude": lats, "longitude": lons},
     )
     ds.attrs = {
         "title": "MODIS MOD11A2 Annual Daytime Land Surface Temperature",
@@ -67,10 +60,10 @@ def main():
     print(f"Dataset to initialize:\n{ds}\n")
 
     storage = icechunk.azure_storage(
-        account=os.environ["AZURE_STORAGE_ACCOUNT"],
-        container=os.environ["AZURE_CONTAINER"],
-        prefix=os.environ["ICECHUNK_PREFIX"],
-        sas_token=os.environ["AZURE_STORAGE_SAS_TOKEN"],
+        account=cfg.AZURE_STORAGE_ACCOUNT,
+        container=cfg.AZURE_CONTAINER,
+        prefix=cfg.ICECHUNK_PREFIX,
+        sas_token=cfg.AZURE_STORAGE_SAS_TOKEN,
     )
 
     print("Creating Icechunk repository...")
