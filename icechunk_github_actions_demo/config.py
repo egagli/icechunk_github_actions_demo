@@ -1,17 +1,45 @@
-"""Dataset configuration and derived spatial objects.
+"""Dataset configuration, global geobox, and tile utilities.
 
 Usage:
-    from config import Config
-    cfg = Config("config/config_v1.txt")          # CI: reads credentials from env vars
-    cfg = Config("config/config_with_secrets_v1.txt")  # local: reads credentials from file
+    from icechunk_github_actions_demo import Config, load_tile_list
+    config = Config("config/config_v1.txt")          # CI: credentials from env vars
+    config = Config("config/config_with_secrets_v1.txt")  # local: literal credentials
 
 Credential fields set to "ENV" in the config file are resolved from os.environ.
 """
 
 import os
+from functools import cached_property
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent
+import geopandas as gpd
+import numpy as np
+import odc.geo
+from odc.geo.geobox import GeoBox
+
+REPO_ROOT = Path(__file__).parent.parent
+
+
+def geoboxtiles_to_gdf(gbt):
+    """Convert odc.geo.geobox.GeoboxTiles to a GeoDataFrame with one polygon per tile."""
+    nrows, ncols = gbt.shape.yx
+    records = []
+    geoms = []
+    for irow, icol in np.ndindex(nrows, ncols):
+        tile = gbt[irow, icol]
+        geoms.append(tile.extent.geom)
+        records.append({"row": irow, "col": icol})
+    return gpd.GeoDataFrame(
+        records,
+        geometry=geoms,
+        crs=str(gbt.base.crs) if gbt.base.crs is not None else None,
+    )
+
+
+def load_tile_list():
+    """Return GeoDataFrame of land tiles (land=True) from the committed tile_list.geojson."""
+    gdf = gpd.read_file(REPO_ROOT / "tile_list.geojson")
+    return gdf[gdf["land"]].reset_index(drop=True)
 
 
 class Config:
@@ -39,9 +67,6 @@ class Config:
         self.AZURE_CONTAINER = raw["AZURE_CONTAINER"]
         self.ICECHUNK_PREFIX = raw["ICECHUNK_PREFIX"]
 
-        import odc.geo
-        from odc.geo.geobox import GeoBox
-
         self.global_geobox = GeoBox.from_bbox(
             (-180, -90, 180, 90), crs="epsg:4326", resolution=self.RESOLUTION
         )
@@ -56,3 +81,8 @@ class Config:
         bit-for-bit identical to the Zarr store's coordinate arrays.
         """
         return self._geobox_tiles[(row, col)]
+
+    @cached_property
+    def global_geobox_tiles_gdf(self):
+        """GeoDataFrame of all tiles derived from the global geobox (no land filter)."""
+        return geoboxtiles_to_gdf(self._geobox_tiles)

@@ -19,8 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import icechunk
-from config import Config
-from utils import load_tile_list
+from icechunk_github_actions_demo import Config, load_tile_list
 
 
 def processed_tiles(repo):
@@ -35,13 +34,13 @@ def processed_tiles(repo):
 
 
 def main():
-    cfg = Config("config/config_v1.txt")
+    config = Config("config/config_v1.txt")
 
     storage = icechunk.azure_storage(
-        account=cfg.AZURE_STORAGE_ACCOUNT,
-        container=cfg.AZURE_CONTAINER,
-        prefix=cfg.ICECHUNK_PREFIX,
-        sas_token=cfg.AZURE_STORAGE_SAS_TOKEN,
+        account=config.AZURE_STORAGE_ACCOUNT,
+        container=config.AZURE_CONTAINER,
+        prefix=config.ICECHUNK_PREFIX,
+        sas_token=config.AZURE_STORAGE_SAS_TOKEN,
     )
     repo = icechunk.Repository.open(storage)
 

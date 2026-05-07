@@ -15,6 +15,7 @@ odc-stac = "*"
 odc-geo = "*"
 geopandas = "*"
 geodatasets = "*"
+adlfs = ">=2026.4.0,<2027"
 
 [feature.dev.dependencies]
 jupyterlab = "*"
