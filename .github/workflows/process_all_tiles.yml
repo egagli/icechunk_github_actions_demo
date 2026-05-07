@@ -1,17 +1,22 @@
 name: Process All Tiles
 
 # Re-runnable: queries Icechunk history to skip already-processed tiles.
-# Run initialize_store.yml first to create the store.
+# Run notebook 01_initialize_and_setup.ipynb first to create the store.
+#
+# Uses a batches-of-batches pattern to stay under the 256-job matrix limit:
+#   1. generate-batches: queries unprocessed tiles, outputs batch index list
+#   2. process-batches: one job per batch, each calls process_tile_batch.yml
+#      which internally fans out up to 256 tile jobs
 
 on:
   workflow_dispatch:
 
 jobs:
-  generate-matrix:
+  generate-batches:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.get-tiles.outputs.matrix }}
-      count: ${{ steps.get-tiles.outputs.count }}
+      matrix: ${{ steps.get-batches.outputs.matrix }}
+      count: ${{ steps.get-batches.outputs.count }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,42 +25,26 @@ jobs:
           pixi-version: v0.39.0
           environments: ci
 
-      - name: Generate tile matrix from Icechunk history
-        id: get-tiles
+      - name: Generate batch list from Icechunk history
+        id: get-batches
         env:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_SAS_TOKEN: ${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
           AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
           ICECHUNK_PREFIX: ${{ secrets.ICECHUNK_PREFIX }}
         run: |
-          OUTPUT=$(pixi run -e ci python scripts/generate_tile_matrix.py)
-          COUNT=$(echo "$OUTPUT" | python -c "import sys,json; print(len(json.load(sys.stdin)['tile']))")
+          OUTPUT=$(pixi run -e ci python scripts/generate_tile_matrix.py --list-batches)
+          COUNT=$(echo "$OUTPUT" | python -c "import sys,json; print(len(json.load(sys.stdin)['batch_index']))")
           echo "matrix=$OUTPUT" >> $GITHUB_OUTPUT
           echo "count=$COUNT" >> $GITHUB_OUTPUT
 
-  process-tiles:
-    needs: generate-matrix
-    if: fromJson(needs.generate-matrix.outputs.count) > 0
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
+  process-batches:
+    needs: generate-batches
+    if: fromJson(needs.generate-batches.outputs.count) > 0
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: prefix-dev/setup-pixi@v0.8.3
-        with:
-          pixi-version: v0.39.0
-          environments: ci
-
-      - name: Process tile ${{ matrix.tile.row }}-${{ matrix.tile.col }}
-        env:
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_SAS_TOKEN: ${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
-          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
-          ICECHUNK_PREFIX: ${{ secrets.ICECHUNK_PREFIX }}
-        run: |
-          pixi run -e ci python scripts/process_tile.py \
-            --tile-row ${{ matrix.tile.row }} \
-            --tile-col ${{ matrix.tile.col }}
+      matrix: ${{ fromJson(needs.generate-batches.outputs.matrix) }}
+    uses: ./.github/workflows/process_tile_batch.yml
+    with:
+      batch_index: ${{ matrix.batch_index }}
+    secrets: inherit

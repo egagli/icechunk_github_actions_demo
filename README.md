@@ -59,7 +59,8 @@ icechunk_github_actions_demo/
 │   ├── 01_initialize_and_setup.ipynb   # run once to create tile_list.geojson and the store
 │   └── 02_processing_status.ipynb      # visualize processing progress
 └── .github/workflows/
-    ├── process_all_tiles.yml       # main workflow: matrix over all unprocessed tiles
+    ├── process_all_tiles.yml       # main workflow: generates batch list, calls process_tile_batch.yml per batch
+    ├── process_tile_batch.yml      # reusable workflow: matrix of up to 256 tiles for one batch
     └── process_single_tile.yml     # manual dispatch for testing/reprocessing one tile
 ```
 
@@ -141,8 +142,7 @@ session.commit("initialize store: empty template")
 
 ### Step 2: Generate the tile matrix (`scripts/generate_tile_matrix.py`)
 
-The `generate-matrix` job runs first and outputs a JSON list of unprocessed
-tiles. It determines which tiles need processing by:
+The script determines which tiles need processing by:
 
 1. Reading `tile_list.geojson` via `load_tile_list()` (returns only `land=True` tiles)
 2. Calling `processed_tiles(repo)` to parse the Icechunk commit history for
@@ -153,25 +153,23 @@ tiles. It determines which tiles need processing by:
 single source of truth. Both functions are provided by the
 `icechunk_github_actions_demo` package and reused by notebook `02_processing_status.ipynb`.
 
+The script has two modes:
+
 ```python
-from icechunk_github_actions_demo import Config, load_tile_list, processed_tiles
-
-tile_gdf = load_tile_list()   # reads tile_list.geojson, filters land=True
-land = [{"row": int(r["row"]), "col": int(r["col"])} for _, r in tile_gdf.iterrows()]
-
-repo = icechunk.Repository.open(storage)
-done = processed_tiles(repo)  # parses commit history
-
-unprocessed = [t for t in land if (t["row"], t["col"]) not in done]
-print(json.dumps({"tile": unprocessed}))
+# --list-batches: outputs {"batch_index": [0, 1, ...]} for process_all_tiles.yml
+# --batch-index N: outputs {"tile": [...]} for the Nth batch of ≤256 tiles
 ```
 
-The GitHub Actions matrix then fans out one job per tile:
+The workflow uses a **batches-of-batches** pattern to stay under the 256-job matrix limit:
 
 ```yaml
-strategy:
-  fail-fast: false
-  matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+# process_all_tiles.yml
+generate-batches:   # → {"batch_index": [0, 1]}
+process-batches:    # matrix over batch indices → calls process_tile_batch.yml per batch
+
+# process_tile_batch.yml (reusable workflow_call)
+generate-matrix:    # → {"tile": [...]} for one batch
+process-tiles:      # matrix over tiles in that batch
 ```
 
 ### Step 3: Process each tile (`scripts/process_tile.py`)
@@ -261,15 +259,20 @@ lst_k = ds["avg_daytime_lst"].where(ds["avg_daytime_lst"] > 0) * 0.02
 
 ## Scaling Beyond 256 Tiles
 
-GitHub Actions matrix jobs are capped at 256 entries. For datasets with more
-land tiles (finer tile grids, different regions), use a **batches-of-batches**
-pattern: a first workflow splits the tile list into 256-tile batches and calls a
-second workflow as a reusable [`workflow_call`](https://docs.github.com/en/actions/sharing-automations/reusing-workflows)
-for each batch. See [`process_batch_large.yml`](https://github.com/egagli/global_snowmelt_runoff_onset/blob/main/.github/workflows/process_batch_large.yml)
-in `global_snowmelt_runoff_onset` for a worked example.
+GitHub Actions matrix jobs are capped at 256 entries. This demo has 381 land
+tiles, which exceeds that limit. The workflows use a **batches-of-batches**
+pattern to handle this transparently:
 
-This demo has 381 land tiles (at 10°×10° resolution), which exceeds the 256-job
-limit. To run the full dataset you will need the batches-of-batches pattern linked above.
+1. `generate-batches` queries unprocessed tiles, outputs a small matrix of batch
+   indices (e.g. `{"batch_index": [0, 1]}` for 381 tiles → 2 batches)
+2. `process-batches` fans out one job per batch index, each calling
+   `process_tile_batch.yml` (a reusable `workflow_call` workflow) with its batch index
+3. Each `process_tile_batch.yml` run generates its own ≤256-tile matrix and
+   processes them in parallel
+
+The batch size is set by `BATCH_SIZE = 256` in `scripts/generate_tile_matrix.py`.
+For very large datasets (thousands of tiles), you can reduce the batch size or
+use a different compute backend entirely (Modal, Coiled, Lithops).
 
 ---
 
