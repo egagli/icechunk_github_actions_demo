@@ -105,7 +105,7 @@ def main(tile_row, tile_col):
                         "avg_daytime_lst": v["avg"].expand_dims(year=[yr]),
                         "max_daytime_lst": v["max"].expand_dims(year=[yr]),
                     }
-                ).chunk({"year": 1, "latitude": config.PIXELS_PER_TILE, "longitude": config.PIXELS_PER_TILE})
+                ).drop_vars("spatial_ref", errors="ignore").chunk({"year": 1, "latitude": config.PIXELS_PER_TILE, "longitude": config.PIXELS_PER_TILE})
                 logger.info(f"  Writing year {yr} (region lat {lat_start}:{lat_start + config.PIXELS_PER_TILE}, lon {lon_start}:{lon_start + config.PIXELS_PER_TILE})...")
                 year_ds.to_zarr(
                     session.store, region=region, zarr_format=3, consolidated=False
