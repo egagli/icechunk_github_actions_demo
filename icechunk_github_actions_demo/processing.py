@@ -35,7 +35,7 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
         logger.info(f"  [{year}] No items found, skipping")
         return None, None
 
-    dates = sorted(i.datetime.date() for i in items)
+    dates = sorted((i.datetime or i.common_metadata.start_datetime).date() for i in items)
     logger.info(f"  [{year}] Found {len(items)} items ({dates[0]} → {dates[-1]})")
 
     logger.info(f"  [{year}] Loading {len(items)} granules via odc.stac...")
