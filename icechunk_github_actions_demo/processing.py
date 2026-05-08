@@ -49,9 +49,10 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
     # QC_Day bits 0-1: 0b00 = good, 0b01 = nominal quality
     good = (ds.QC_Day & 0b11) <= 1
     lst = ds.LST_Day_1km.where(good).where(ds.LST_Day_1km >= 7500)
+    lst = lst.compute()
 
     logger.info(f"  [{year}] Computing annual mean and max over {len(ds.time)} time steps...")
-    avg_lst = lst.mean("time").compute().astype(np.uint16)
-    max_lst = lst.max("time").compute().astype(np.uint16)
+    avg_lst = lst.mean("time").astype(np.uint16)
+    max_lst = lst.max("time").astype(np.uint16)
     logger.info(f"  [{year}] Compute complete")
     return avg_lst, max_lst
