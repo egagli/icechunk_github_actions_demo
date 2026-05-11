@@ -76,9 +76,11 @@ Processing status after we've initialized the store but before we've run the pro
 Processing status while we're running the process all tiles github action.....
 <img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422" />  
 
-
 Processing status once we've run the process all tiles github action.....
-placeholder!!!   
+<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/89833ef7-a3ab-4902-8858-34508adb630b" />  
+
+Looks like on tile remains unprocessed, let's run the process all tiles github action once more....
+
 
 ---
 
