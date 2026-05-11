@@ -21,9 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import geopandas as gpd
 import icechunk
-from icechunk_github_actions_demo import Config, list_processed_tiles
+from icechunk_github_actions_demo import Config, get_processing_status_gdf
 
 BATCH_SIZE = 256
 
@@ -46,15 +45,19 @@ def main():
     )
     repo = icechunk.Repository.open(storage)
 
-    tile_gdf = gpd.read_file(config.TILE_LIST_PATH)
-    land = [{"row": int(r["row"]), "col": int(r["col"])} for _, r in tile_gdf.iterrows() if r["land"]]
-    done = list_processed_tiles(repo)
-    unprocessed = [t for t in land if (t["row"], t["col"]) not in done]
+    status_gdf = get_processing_status_gdf(repo, config.TILE_LIST_PATH, config.YEARS)
+    land_count = int((status_gdf["status"] != "ocean").sum())
+    done_count = int(status_gdf["status"].isin(["processed", "nodata"]).sum())
+    unprocessed = [
+        {"row": int(r["row"]), "col": int(r["col"])}
+        for _, r in status_gdf.iterrows()
+        if r["status"] == "unprocessed"
+    ]
 
     num_batches = math.ceil(len(unprocessed) / BATCH_SIZE) if unprocessed else 0
 
     print(
-        f"{len(land)} land tiles total, {len(done)} processed, "
+        f"{land_count} land tiles total, {done_count} processed/nodata, "
         f"{len(unprocessed)} remaining, {num_batches} batch(es)",
         file=sys.stderr,
     )

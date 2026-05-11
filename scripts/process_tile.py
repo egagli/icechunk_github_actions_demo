@@ -19,6 +19,9 @@ import xarray as xr
 from icechunk_github_actions_demo import Config
 from icechunk_github_actions_demo.processing import fetch_annual_lst
 
+SPECIAL_NOTE_NONE = "None"
+SPECIAL_NOTE_NODATA = "No input data found for any year, therefore no output written to tile."
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(message)s",
@@ -73,9 +76,17 @@ def main(tile_row, tile_col):
         logger.info(f"  [{year}] Done — {valid:,} valid pixels ({pct:.1f}% coverage)")
         per_year[year] = {"avg": avg_lst, "max": max_lst}
 
+    stats_parts = [
+        f"({yr}: valid_pixels={_coverage(v['avg'], config.FILL_VALUE)[0]}, coverage={_coverage(v['avg'], config.FILL_VALUE)[1]:.1f}%)"
+        for yr, v in sorted(per_year.items())
+    ]
+    stats_str = "[" + ", ".join(stats_parts) + "]"
+
     if not per_year:
-        logger.info("No data found for any year — skipping tile.")
-        sys.exit(0)
+        logger.info("No data found for any year — committing nodata marker.")
+        special_note = SPECIAL_NOTE_NODATA
+    else:
+        special_note = SPECIAL_NOTE_NONE
 
     lat_start = tile_row * config.PIXELS_PER_TILE
     lon_start = tile_col * config.PIXELS_PER_TILE
@@ -112,7 +123,7 @@ def main(tile_row, tile_col):
                 )
 
             snapshot_id = session.commit(
-                f"tile_{tile_row}_{tile_col}: processed",
+                f"Tile(row={tile_row}, col={tile_col}) processed. Stats: {stats_str} Special note: {special_note}",
                 rebase_with=icechunk.ConflictDetector(),
             )
             logger.info(f"Committed. Snapshot: {snapshot_id}")

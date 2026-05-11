@@ -1,7 +1,7 @@
 """Dataset configuration, global geobox, and tile utilities.
 
 Usage:
-    from icechunk_github_actions_demo import Config, list_processed_tiles
+    from icechunk_github_actions_demo import Config, get_processing_status_gdf
     config = Config("config/config_v1.txt")          # CI: credentials from env vars
     config = Config("config/config_with_secrets_v1.txt")  # local: literal credentials
 
@@ -20,6 +20,18 @@ from odc.geo.geobox import GeoBox
 
 REPO_ROOT = Path(__file__).parent.parent
 
+SPECIAL_NOTE_NONE = "None"
+SPECIAL_NOTE_NODATA = "No input data found for any year, therefore no output written to tile."
+
+# New-format: Tile(row=R, col=C) processed. Stats: [...] Special note: ...
+_NEW_MSG_RE = re.compile(
+    r"Tile\(row=(\d+), col=(\d+)\) processed\. Stats: \[([^\]]*)\] Special note: (.+)"
+)
+# Per-year stat entry inside the Stats list
+_STAT_RE = re.compile(r"(\d{4}): valid_pixels=(\d+), coverage=([\d.]+)%")
+# Legacy format: tile_R_C: processed
+_OLD_MSG_RE = re.compile(r"tile_(\d+)_(\d+): processed")
+
 
 def geoboxtiles_to_gdf(gbt):
     """Convert odc.geo.geobox.GeoboxTiles to a GeoDataFrame with one polygon per tile."""
@@ -37,17 +49,76 @@ def geoboxtiles_to_gdf(gbt):
     )
 
 
+def get_processing_status_gdf(repo, tile_list_path, years):
+    """Return a GeoDataFrame of all tiles with processing status and per-year pixel counts.
+
+    Status values:
+        "processed"   — land tile, data written to store
+        "nodata"      — land tile, no MODIS input found, commit made but no data written
+        "unprocessed" — land tile, no commit found yet
+        "ocean"       — non-land tile
+
+    Per-year columns ``{year}_valid_pixels`` (int or NaN) are added for each year in
+    ``years``. Legacy commits (old format) are treated as "processed" with NaN stats.
+    """
+    tile_gdf = gpd.read_file(tile_list_path).copy()
+
+    # Walk commit history once and build a dict keyed by (row, col)
+    commit_info = {}
+    for commit in repo.ancestry(branch="main"):
+        msg = commit.message
+        m = _NEW_MSG_RE.match(msg)
+        if m:
+            row, col = int(m.group(1)), int(m.group(2))
+            special_note = m.group(4).strip()
+            year_stats = {
+                int(sm.group(1)): {
+                    "valid_pixels": int(sm.group(2)),
+                    "coverage": float(sm.group(3)),
+                }
+                for sm in _STAT_RE.finditer(m.group(3))
+            }
+            commit_info[(row, col)] = {"special_note": special_note, "year_stats": year_stats}
+            continue
+        m = _OLD_MSG_RE.match(msg)
+        if m:
+            row, col = int(m.group(1)), int(m.group(2))
+            # Legacy commit: treat as processed, no per-year stats available
+            commit_info.setdefault((row, col), {"special_note": SPECIAL_NOTE_NONE, "year_stats": {}})
+
+    def _status(r):
+        key = (int(r["row"]), int(r["col"]))
+        if not r["land"]:
+            return "ocean"
+        if key not in commit_info:
+            return "unprocessed"
+        if commit_info[key]["special_note"] == SPECIAL_NOTE_NODATA:
+            return "nodata"
+        return "processed"
+
+    tile_gdf["status"] = tile_gdf.apply(_status, axis=1)
+
+    for yr in years:
+        def _valid_pixels(r, yr=yr):
+            key = (int(r["row"]), int(r["col"]))
+            info = commit_info.get(key)
+            if info is None:
+                return float("nan")
+            return info["year_stats"].get(yr, {}).get("valid_pixels", float("nan"))
+        tile_gdf[f"{yr}_valid_pixels"] = tile_gdf.apply(_valid_pixels, axis=1)
+
+    return tile_gdf
+
+
 def list_processed_tiles(repo):
     """Return the set of (row, col) tuples already committed to the Icechunk store.
 
-    Parses commit messages matching 'tile_R_C: processed' from the full ancestry
-    of the main branch. Icechunk commit history is the single source of truth —
-    no external status log is maintained.
+    Backward-compat wrapper around get_processing_status_gdf. Prefer using
+    get_processing_status_gdf directly for richer status information.
     """
-    pattern = re.compile(r"tile_(\d+)_(\d+): processed")
     done = set()
     for commit in repo.ancestry(branch="main"):
-        m = pattern.match(commit.message)
+        m = _NEW_MSG_RE.match(commit.message) or _OLD_MSG_RE.match(commit.message)
         if m:
             done.add((int(m.group(1)), int(m.group(2))))
     return done
