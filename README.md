@@ -68,10 +68,14 @@ icechunk_github_actions_demo/
 ```
 
 Determine which tiles to process.....  
-<img width="3570" height="1971" alt="image" src="https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b" />
+<img width="3570" height="1971" alt="image" src="https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b" />  
 
 Processing status after we've initialized the store but before we've run the process all tiles github action.....  
-<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a" />
+<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a" />  
+
+Processing status while we're running the process all tiles github action.....
+<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422" />  
+
 
 Processing status once we've run the process all tiles github action.....
 placeholder!!!   
