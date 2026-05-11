@@ -33,10 +33,11 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
 
     if not items:
         logger.info(f"  [{year}] No items found, skipping")
-        return None, None
+        return None, None, 0
 
+    granule_count = len(items)
     dates = sorted((i.datetime or i.common_metadata.start_datetime).date() for i in items)
-    logger.info(f"  [{year}] Found {len(items)} items ({dates[0]} → {dates[-1]})")
+    logger.info(f"  [{year}] Found {granule_count} items ({dates[0]} → {dates[-1]})")
 
     logger.info(f"  [{year}] Loading {len(items)} granules via odc.stac...")
     ds = odc.stac.load(
@@ -55,4 +56,4 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
     avg_lst = lst.mean("time").astype(np.uint16)
     max_lst = lst.max("time").astype(np.uint16)
     logger.info(f"  [{year}] Compute complete")
-    return avg_lst, max_lst
+    return avg_lst, max_lst, granule_count

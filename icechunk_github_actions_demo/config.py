@@ -28,7 +28,7 @@ _NEW_MSG_RE = re.compile(
     r"Tile\(row=(\d+), col=(\d+)\) processed\. Stats: \[([^\]]*)\] Special note: (.+)"
 )
 # Per-year stat entry inside the Stats list
-_STAT_RE = re.compile(r"(\d{4}): valid_pixels=(\d+), coverage=([\d.]+)%")
+_STAT_RE = re.compile(r"(\d{4}): input_granules=(\d+), output_valid_pixels=(\d+), coverage=([\d.]+)%")
 # Legacy format: tile_R_C: processed
 _OLD_MSG_RE = re.compile(r"tile_(\d+)_(\d+): processed")
 
@@ -58,7 +58,7 @@ def get_processing_status_gdf(repo, tile_list_path, years):
         "unprocessed" — land tile, no commit found yet
         "ocean"       — non-land tile
 
-    Per-year columns ``{year}_valid_pixels`` (int or NaN) are added for each year in
+    Per-year columns ``{year}_output_valid_pixels`` (int or NaN) are added for each year in
     ``years``. Legacy commits (old format) are treated as "processed" with NaN stats.
     """
     tile_gdf = gpd.read_file(tile_list_path).copy()
@@ -73,8 +73,9 @@ def get_processing_status_gdf(repo, tile_list_path, years):
             special_note = m.group(4).strip()
             year_stats = {
                 int(sm.group(1)): {
-                    "valid_pixels": int(sm.group(2)),
-                    "coverage": float(sm.group(3)),
+                    "input_granules": int(sm.group(2)),
+                    "output_valid_pixels": int(sm.group(3)),
+                    "coverage": float(sm.group(4)),
                 }
                 for sm in _STAT_RE.finditer(m.group(3))
             }
@@ -99,13 +100,22 @@ def get_processing_status_gdf(repo, tile_list_path, years):
     tile_gdf["status"] = tile_gdf.apply(_status, axis=1)
 
     for yr in years:
-        def _valid_pixels(r, yr=yr):
+        def _output_valid_pixels(r, yr=yr):
             key = (int(r["row"]), int(r["col"]))
             info = commit_info.get(key)
             if info is None:
                 return float("nan")
-            return info["year_stats"].get(yr, {}).get("valid_pixels", float("nan"))
-        tile_gdf[f"{yr}_valid_pixels"] = tile_gdf.apply(_valid_pixels, axis=1)
+            return info["year_stats"].get(yr, {}).get("output_valid_pixels", float("nan"))
+
+        def _input_granules(r, yr=yr):
+            key = (int(r["row"]), int(r["col"]))
+            info = commit_info.get(key)
+            if info is None:
+                return float("nan")
+            return info["year_stats"].get(yr, {}).get("input_granules", float("nan"))
+
+        tile_gdf[f"{yr}_output_valid_pixels"] = tile_gdf.apply(_output_valid_pixels, axis=1)
+        tile_gdf[f"{yr}_input_granules"] = tile_gdf.apply(_input_granules, axis=1)
 
     return tile_gdf
 

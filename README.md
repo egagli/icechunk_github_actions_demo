@@ -166,11 +166,11 @@ The script determines which tiles need processing by calling
    status log) and parses commit messages of the form:
 
    ```text
-   Tile(row=R, col=C) processed. Stats: [(2020: valid_pixels=N, coverage=P%), ...] Special note: <note>
+   Tile(row=R, col=C) processed. Stats: [(2020: input_granules=G, output_valid_pixels=N, coverage=P%), ...] Special note: <note>
    ```
 
 3. Returns a GeoDataFrame with a `status` column (`"processed"`, `"nodata"`,
-   `"unprocessed"`, `"ocean"`) and per-year `{year}_valid_pixels` columns
+   `"unprocessed"`, `"ocean"`) and per-year `{year}_output_valid_pixels` columns
 
 Only tiles with `status == "unprocessed"` are dispatched. Tiles where no MODIS
 input exists for any year (e.g. high-latitude ocean tiles classified as land by

@@ -68,16 +68,16 @@ def main(tile_row, tile_col):
     per_year = {}
     for year in config.YEARS:
         logger.info(f"  [{year}] Starting fetch...")
-        avg_lst, max_lst = fetch_annual_lst(tile_geobox, year, config.PIXELS_PER_TILE)
+        avg_lst, max_lst, granule_count = fetch_annual_lst(tile_geobox, year, config.PIXELS_PER_TILE)
         if avg_lst is None:
             logger.info(f"  [{year}] No data — skipping")
             continue
         valid, pct = _coverage(avg_lst, config.FILL_VALUE)
         logger.info(f"  [{year}] Done — {valid:,} valid pixels ({pct:.1f}% coverage)")
-        per_year[year] = {"avg": avg_lst, "max": max_lst}
+        per_year[year] = {"avg": avg_lst, "max": max_lst, "granules": granule_count}
 
     stats_parts = [
-        f"({yr}: valid_pixels={_coverage(v['avg'], config.FILL_VALUE)[0]}, coverage={_coverage(v['avg'], config.FILL_VALUE)[1]:.1f}%)"
+        f"({yr}: input_granules={v['granules']}, output_valid_pixels={_coverage(v['avg'], config.FILL_VALUE)[0]}, coverage={_coverage(v['avg'], config.FILL_VALUE)[1]:.1f}%)"
         for yr, v in sorted(per_year.items())
     ]
     stats_str = "[" + ", ".join(stats_parts) + "]"
