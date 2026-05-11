@@ -17,6 +17,7 @@ geopandas = "*"
 geodatasets = "*"
 adlfs = ">=2026.4.0,<2027"
 planetary-computer = ">=1.0.0,<2"
+rioxarray = ">=0.22.0,<0.23"
 
 [feature.dev.dependencies]
 jupyterlab = "*"

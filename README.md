@@ -127,27 +127,55 @@ Re-run whenever needed; the workflow is idempotent.
 
 Run this notebook once before any tile processing. It does two things:
 
-**1a. Build `tile_list.geojson`** — derives all 648 tile geometries from the
-global GeoBox so they are provably consistent with the output store grid, then
-marks each tile with a `land` boolean via Natural Earth polygons. Commit this
-file; it is read by CI without recomputation.
+**1a. Build `tile_list.geojson`** — the `Config` class constructs a single
+[`odc.geo.GeoBox`](https://odc-geo.readthedocs.io/en/latest/) for the global
+0.01° grid and a `GeoboxTiles` object that subdivides it into 18×36 tiles of
+1000×1000 pixels each. Tile geometries are derived directly from this same
+`GeoboxTiles` object (via `config.global_geobox_tiles_gdf`), so the tile
+footprints are provably consistent with the store grid — no separate coordinate
+computation is needed. Each tile is then tested against Natural Earth land
+polygons to populate the `land` boolean. This geobox-first tile derivation
+approach is inspired by
+[earthmover's serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo).
+Commit `tile_list.geojson`; CI reads it directly without recomputing it.
 
-**1b. Create the empty store** — an empty xarray Dataset is constructed with
-the correct shape, dimensions, and encoding, backed by dask arrays that are
-never materialized. Writing with `compute=False` and `write_empty_chunks=False`
-creates only metadata and coordinates; no data chunks exist until runners fill them.
+**1b. Create the empty store** — an xarray Dataset is constructed with the
+full output shape backed by `dask.array.full` (never materialized). Coordinates
+use cell-center offsets (±½ pixel) so they match the values `odc.stac.load`
+produces when given the same geobox to each runner:
 
 ```python
-shape = (3, 18000, 36000)   # years × lat × lon
+shape  = (len(config.YEARS), 18000, 36000)   # years × lat × lon
+chunks = (1, 1000, 1000)
 
-ds = xr.Dataset({
-    "avg_daytime_lst": xr.DataArray(
-        da.full(shape, np.uint16(0), dtype=np.uint16, chunks=(1, 1000, 1000)),
-        dims=["year", "latitude", "longitude"],
-        attrs={"scale_factor": np.float32(0.02), "units": "K", ...},
-    ),
-    ...
-}, coords={"year": [2020, 2021, 2022], "latitude": lats, "longitude": lons})
+# Cell-center coordinates: offset by half a pixel from the grid edges
+lats = np.arange(90,  -90, -config.RESOLUTION) - config.RESOLUTION / 2
+lons = np.arange(-180, 180,  config.RESOLUTION) + config.RESOLUTION / 2
+
+var_attrs = {
+    "scale_factor": np.float32(0.02),   # raw uint16 × 0.02 → Kelvin
+    "_FillValue": 0,
+    "valid_range": [7500, 65535],
+    "units": "K",
+    "grid_mapping": "spatial_ref",
+}
+
+ds = xr.Dataset(
+    {
+        "avg_daytime_lst": xr.DataArray(
+            da.full(shape, np.uint16(0), dtype=np.uint16, chunks=chunks),
+            dims=["year", "latitude", "longitude"],
+            attrs={**var_attrs, "long_name": "Annual mean daytime land surface temperature"},
+        ),
+        "max_daytime_lst": xr.DataArray(
+            da.full(shape, np.uint16(0), dtype=np.uint16, chunks=chunks),
+            dims=["year", "latitude", "longitude"],
+            attrs={**var_attrs, "long_name": "Annual maximum daytime land surface temperature"},
+        ),
+    },
+    coords={"year": np.array(config.YEARS), "latitude": lats, "longitude": lons},
+    attrs={"Conventions": "CF-1.8", "title": "MODIS MOD11A2 Annual Daytime LST", ...},
+)
 
 repo = icechunk.Repository.create(storage)
 session = repo.writable_session("main")
@@ -155,6 +183,12 @@ ds.to_zarr(session.store, mode="w", zarr_format=3,
            compute=False, write_empty_chunks=False, consolidated=False)
 session.commit("initialize store: empty template")
 ```
+
+`compute=False` skips materializing the dask arrays; `write_empty_chunks=False`
+skips writing any chunk data. The result is a fully-described Zarr v3 store
+containing only metadata (`.zarray`, coordinate arrays, CF attributes) — roughly
+a few MB on disk even though the declared shape is 8 GB. Runners fill in chunks
+as they process tiles.
 
 ### Step 2: Generate the tile matrix (`scripts/generate_tile_matrix.py`)
 
@@ -323,8 +357,8 @@ related projects, to help you choose the right pattern for your dataset.
 
 | Approach | When to use |
 | --- | --- |
-| **Notebook + `dask.full` + `to_zarr(compute=False)`** (this demo) | Interactive; run once before triggering CI. Good default choice. |
-| `xr_zeros` from `odc.geo` | Convenient shorthand when already using odc.geo geoboxes; same semantics under the hood. Used in [serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo). |
+| **Notebook + `dask.full` + `to_zarr(compute=False)`** (this demo) | Interactive; run once before triggering CI. Tile geometries are derived from the same `GeoboxTiles` object that defines the store grid, so coordinate alignment is guaranteed by construction. Good default choice. |
+| `xr_zeros` from `odc.geo` + direct Zarr array writes | Convenient shorthand when already using odc.geo geoboxes; skips xarray for the actual writes. Used in [serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo). |
 | Direct `zarr.open` + array assignment | Maximum control over encoding; bypasses xarray. Useful when you need Zarr v3 features (ShardingCodec) that xarray doesn't expose yet. |
 
 ### Region determination
