@@ -125,6 +125,7 @@ def main(tile_row, tile_col):
             snapshot_id = session.commit(
                 f"Tile(row={tile_row}, col={tile_col}) processed. Stats: {stats_str} Special note: {special_note}",
                 rebase_with=icechunk.ConflictDetector(),
+                allow_empty=special_note == SPECIAL_NOTE_NODATA,
             )
             logger.info(f"Committed. Snapshot: {snapshot_id}")
             _write_step_summary(tile_row, tile_col, bbox, per_year, snapshot_id, config.FILL_VALUE)
