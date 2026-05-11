@@ -1,8 +1,11 @@
 # icechunk-github-actions-demo
 
 A minimum reproducible example of building a **global-scale raster dataset** using
-GitHub Actions as free compute and [Icechunk](https://icechunk.io) as a versioned
-Zarr v3 store. Each GitHub Actions runner processes one spatial tile; all runners
+[GitHub Actions](https://docs.github.com/en/actions) as free compute and
+[Icechunk](https://icechunk.io) as a versioned Zarr v3 store. The GitHub Actions
+patterns used here draw from the
+[SciPy 2024 GitHub Actions for Science tutorial](https://scipy2024-githubactionstutorial.readthedocs.io/en/latest/intro.html)
+([repo](https://github.com/uwescience/SciPy2024-GitHubActionsTutorial)). Each GitHub Actions runner processes one spatial tile; all runners
 write to the same store concurrently without any external coordination.
 
 The concrete dataset is annual average and maximum MODIS daytime land surface
@@ -49,8 +52,8 @@ icechunk_github_actions_demo/
 │   ├── config_v1.txt               # dataset params + credentials as ENV placeholders
 │   └── config_with_secrets_v1.txt  # literal credentials for local runs (gitignored)
 ├── icechunk_github_actions_demo/   # Python package
-│   ├── __init__.py                 # exports Config, list_processed_tiles
-│   ├── config.py                   # Config class, geobox utilities
+│   ├── __init__.py                 # exports Config, get_processing_status_gdf, list_processed_tiles
+│   ├── config.py                   # Config class, geobox utilities, commit message constants
 │   └── processing.py               # fetch_annual_lst
 ├── scripts/
 │   ├── generate_tile_matrix.py     # prints JSON matrix of unprocessed tiles
@@ -151,16 +154,29 @@ session.commit("initialize store: empty template")
 
 ### Step 2: Generate the tile matrix (`scripts/generate_tile_matrix.py`)
 
-The script determines which tiles need processing by:
+The script determines which tiles need processing by calling
+`get_processing_status_gdf(repo, tile_list_path, years)`, which:
 
-1. Reading `tile_list.geojson` via `gpd.read_file(config.TILE_LIST_PATH)`, filtering `land=True`
-2. Calling `list_processed_tiles(repo)` to parse the Icechunk commit history for
-   messages matching `tile_R_C: processed`
-3. Subtracting processed from all land tiles
+1. Reads `tile_list.geojson` to get all tile geometries and their `land` boolean
+2. Walks the Icechunk commit history (the single source of truth — no separate
+   status log) and parses commit messages of the form:
 
-**No separate status log is maintained.** The Icechunk commit history is the
-single source of truth. `list_processed_tiles` is provided by the
-`icechunk_github_actions_demo` package and reused by notebook `02_processing_status.ipynb`.
+   ```text
+   Tile(row=R, col=C) processed. Stats: [(2020: valid_pixels=N, coverage=P%), ...] Special note: <note>
+   ```
+
+3. Returns a GeoDataFrame with a `status` column (`"processed"`, `"nodata"`,
+   `"unprocessed"`, `"ocean"`) and per-year `{year}_valid_pixels` columns
+
+Only tiles with `status == "unprocessed"` are dispatched. Tiles where no MODIS
+input exists for any year (e.g. high-latitude ocean tiles classified as land by
+Natural Earth) are committed with `Special note: No input data found for any year,
+therefore no output written to tile.` and get `status == "nodata"` — they are
+permanently skipped on subsequent runs.
+
+`get_processing_status_gdf` is provided by the `icechunk_github_actions_demo`
+package and reused by notebook `02_processing_status.ipynb`. It also handles
+legacy commits in the older `tile_R_C: processed` format for backward compatibility.
 
 The script has two modes:
 
@@ -233,8 +249,9 @@ while True:
             year_ds.to_zarr(session.store, region=region, zarr_format=3, ...)
 
         session.commit(
-            f"tile_{tile_row}_{tile_col}: processed",
+            f"Tile(row={tile_row}, col={tile_col}) processed. Stats: {stats_str} Special note: {special_note}",
             rebase_with=icechunk.ConflictDetector(),
+            allow_empty=special_note == SPECIAL_NOTE_NODATA,  # no-data tiles write nothing
         )
         break
 
@@ -245,6 +262,14 @@ while True:
 `ConflictDetector` automatically rebases the commit on top of any concurrent
 commits. Because every tile writes to a spatially disjoint region, there are
 never real data conflicts — only commit timing collisions, which always resolve.
+This optimistic-concurrency retry pattern is described in
+[CarbonPlan's OCR pipeline post](https://carbonplan.org/blog/producing-ocr-data).
+
+The commit message encodes per-year pixel counts and a human-readable special
+note (e.g. `"None"` for normal tiles, or the no-data explanation for tiles with
+no MODIS coverage). This makes the Icechunk commit history directly queryable for
+pipeline statistics without any external log — `get_processing_status_gdf` parses
+it to populate the status GeoDataFrame.
 
 ---
 
@@ -311,7 +336,7 @@ related projects, to help you choose the right pattern for your dataset.
 
 | Approach | When to use |
 | --- | --- |
-| **`ConflictDetector()` + Icechunk** (this demo) | Best default: ACID commits, full version history, automatic rebase for non-overlapping writes. Any failure leaves the store in a clean state. |
+| **`ConflictDetector()` + Icechunk** (this demo) | Best default: ACID commits, full version history, automatic rebase for non-overlapping writes. Any failure leaves the store in a clean state. The optimistic-concurrency retry loop is based on the pattern described in [CarbonPlan's OCR pipeline post](https://carbonplan.org/blog/producing-ocr-data) and the [Icechunk GLAD ingestion guide](https://icechunk.io/en/stable/guides/ingestion/glad-ingest/). |
 | Plain Zarr region writes (no Icechunk) | Works safely with non-overlapping tiles and a shared object store (e.g., S3/Azure). No versioning or rollback. Simpler if you don't need audit trail. Used in older pipeline versions of [global_snowmelt_runoff_onset](https://github.com/egagli/global_snowmelt_runoff_onset). |
 | Arraylake / managed Icechunk | Hosted Icechunk with additional features (access control, branch management). Used in [serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo). |
 
@@ -319,7 +344,7 @@ related projects, to help you choose the right pattern for your dataset.
 
 | Approach | When to use |
 | --- | --- |
-| **Icechunk commit history** (this demo) | No external log to maintain. Commit messages are the record. The `list_processed_tiles(repo)` helper is shared between CI scripts and the status notebook. Works as long as commit messages follow a consistent format. |
+| **Icechunk commit history** (this demo) | No external log to maintain. Commit messages encode per-year pixel counts and a special note. `get_processing_status_gdf(repo, tile_list_path, years)` is shared between CI scripts and the status notebook, returning a GeoDataFrame with `status` (`"processed"`, `"nodata"`, `"unprocessed"`, `"ocean"`) and per-year pixel-count columns. Works as long as commit messages follow a consistent format. Approach inspired by the [Icechunk GLAD ingestion guide](https://icechunk.io/en/stable/guides/ingestion/glad-ingest/). |
 | CSV artifacts + consolidation workflow | Used in [global_snowmelt_runoff_onset](https://github.com/egagli/global_snowmelt_runoff_onset): per-tile CSVs uploaded as artifacts, merged by a separate workflow. Good when you want rich per-tile metadata (timing, error messages, pixel counts). |
 | GeoJSON + GitHub API dual-source | Used in [MODIS_snow_phenology](https://github.com/egagli/MODIS_snow_phenology): Icechunk history for successes, GitHub Actions job API for failures with log excerpts. Visualizable as a map; most robust failure attribution. |
 
@@ -327,9 +352,9 @@ related projects, to help you choose the right pattern for your dataset.
 
 | Approach | When to use |
 | --- | --- |
-| **GitHub Actions** (this demo) | Free for public repos, no additional accounts. Ideal for demos and moderate workloads (~381 tiles). 6-hour job limit; 256-job matrix limit per run. |
-| Modal / Lithops / Coiled | Higher throughput, shorter cold-start, no matrix limit. Required for very large tile counts or tight latency requirements. Needs additional accounts and cost management. Used in [serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo). |
-| Coiled (with Icechunk) | Dask-native; good fit if your processing already uses Dask clusters. Used in [CarbonPlan OCR](https://carbonplan.org/blog/producing-ocr-data). |
+| **GitHub Actions** (this demo) | Free for public repos, no additional accounts. Ideal for demos and moderate workloads (~381 tiles). 6-hour job limit; 256-job matrix limit per run. The matrix and reusable workflow patterns used here are covered in the [SciPy 2024 GitHub Actions for Science tutorial](https://scipy2024-githubactionstutorial.readthedocs.io/en/latest/intro.html) ([repo](https://github.com/uwescience/SciPy2024-GitHubActionsTutorial)). |
+| Modal / Lithops / Coiled | Higher throughput, shorter cold-start, no matrix limit. Required for very large tile counts or tight latency requirements. Needs additional accounts and cost management. Used in [earthmover's serverless-datacube-demo](https://github.com/earth-mover/serverless-datacube-demo) ([blog post](https://www.earthmover.io/blog/serverless-datacube-pipeline/)). |
+| Coiled (with Icechunk) | Dask-native; good fit if your processing already uses Dask clusters. Used in [CarbonPlan's OCR pipeline](https://carbonplan.org/blog/producing-ocr-data). |
 
 ---
 
