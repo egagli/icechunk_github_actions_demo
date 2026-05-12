@@ -229,7 +229,9 @@ export default function Map() {
       },
       center: [0, 30],
       zoom: 2,
+      attributionControl: false,
     })
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
 
     map.on('styleimagemissing', () => {})
     mapRef.current = map
@@ -608,7 +610,7 @@ export default function Map() {
       </div>
 
       {/* ── Top-right: Basemap + Projection ── */}
-      <FloatingCard style={{ top: 16, right: 16, width: 180 }}>
+      <FloatingCard style={{ top: 16, right: 16, width: 260 }}>
         <Section label="Basemap">
           <div style={{ display: 'flex', gap: 6 }}>
             {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
@@ -640,7 +642,7 @@ export default function Map() {
       </FloatingCard>
 
       {/* ── Top-right: Overlay controls (below Basemap+Projection card) ── */}
-      <FloatingCard style={{ top: 162, right: 16, width: 180, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+      <FloatingCard style={{ top: 162, right: 16, width: 260, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
         <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
           Processing grid &amp; tile status
         </button>
@@ -710,7 +712,7 @@ export default function Map() {
       </FloatingCard>
 
       {/* ── Bottom-right: Inspect result (always visible) ── */}
-      <FloatingCard style={{ bottom: 44, right: 16, width: 210 }}>
+      <FloatingCard style={{ bottom: 16, right: 16, width: 260 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
             Inspect
