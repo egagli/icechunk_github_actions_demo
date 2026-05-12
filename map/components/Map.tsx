@@ -480,9 +480,8 @@ export default function Map() {
   return (
     <div
       style={{
-        position: 'relative',
-        width: '100vw',
-        height: '100vh',
+        position: 'fixed',
+        inset: 0,
         background: BG,
         overflow: 'hidden',
         fontFamily: 'system-ui, -apple-system, sans-serif',
