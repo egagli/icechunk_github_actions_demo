@@ -105,9 +105,21 @@ const TILE_COLOR_NODATA = '#f59e0b'
 const TILE_COLOR_UNPROCESSED = '#ef4444'
 const TILE_COLOR_UNKNOWN = '#94a3b8' // land tile with no status field yet
 
+const TILE_STATUS_META: Record<string, { label: string; color: string }> = {
+  processed:   { label: 'Processed',      color: TILE_COLOR_PROCESSED },
+  nodata:      { label: 'No input data',  color: TILE_COLOR_NODATA },
+  unprocessed: { label: 'Unprocessed',    color: TILE_COLOR_UNPROCESSED },
+}
+
 // ---------------------------------------------------------------------------
-// Click info type
+// Click info types
 // ---------------------------------------------------------------------------
+
+type TileClickInfo = {
+  row: number
+  col: number
+  status: string
+}
 
 type ClickInfo = {
   lng: number
@@ -150,6 +162,7 @@ export default function Map() {
 
   // Click state
   const [clickInfo, setClickInfo] = useState<ClickInfo | null>(null)
+  const [tileClickInfo, setTileClickInfo] = useState<TileClickInfo | null>(null)
 
   // Derived colormap array (memoized — recomputed only when colormap name changes)
   const colormapArray = useMemo(
@@ -347,9 +360,28 @@ export default function Map() {
       'address_label'
     )
 
+    const tileClickHandler = (e: maplibregl.MapLayerMouseEvent) => {
+      const props = e.features?.[0]?.properties
+      if (!props) return
+      setTileClickInfo({
+        row: props.row,
+        col: props.col,
+        status: props.status ?? 'unknown',
+      })
+    }
+    const cursorOn = () => { map.getCanvas().style.cursor = 'pointer' }
+    const cursorOff = () => { map.getCanvas().style.cursor = '' }
+
+    map.on('click', 'tiles-fill', tileClickHandler)
+    map.on('mouseenter', 'tiles-fill', cursorOn)
+    map.on('mouseleave', 'tiles-fill', cursorOff)
+
     setTilesLoaded(true)
 
     return () => {
+      map.off('click', 'tiles-fill', tileClickHandler)
+      map.off('mouseenter', 'tiles-fill', cursorOn)
+      map.off('mouseleave', 'tiles-fill', cursorOff)
       try { map.removeLayer('tiles-fill') } catch {}
       try { map.removeLayer('tiles-outline') } catch {}
       try { map.removeSource('tiles-status') } catch {}
@@ -372,6 +404,7 @@ export default function Map() {
     const v = showTiles ? 'visible' : 'none'
     mapRef.current.setLayoutProperty('tiles-fill', 'visibility', v)
     mapRef.current.setLayoutProperty('tiles-outline', 'visibility', v)
+    if (!showTiles) setTileClickInfo(null)
   }, [tilesLoaded, showTiles])
 
   // -- Variable change: reset colormap + clim to per-variable defaults ------
@@ -719,6 +752,65 @@ export default function Map() {
                 ))}
               </div>
             )}
+            {showTiles && tileClickInfo ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '12px 14px',
+                  background: '#1e2128',
+                  borderRadius: 6,
+                  border: `1px solid ${BORDER}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: DIM }}>Selected tile</div>
+                  <button
+                    onClick={() => setTileClickInfo(null)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: DIM,
+                      cursor: 'pointer',
+                      fontSize: 18,
+                      lineHeight: 1,
+                      padding: 0,
+                    }}
+                    aria-label="Clear tile selection"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                  <CoordRow label="Row" value={String(tileClickInfo.row)} />
+                  <CoordRow label="Col" value={String(tileClickInfo.col)} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      background: TILE_STATUS_META[tileClickInfo.status]?.color ?? TILE_COLOR_UNKNOWN,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                    {TILE_STATUS_META[tileClickInfo.status]?.label ?? tileClickInfo.status}
+                  </span>
+                </div>
+              </div>
+            ) : showTiles ? (
+              <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic', marginTop: 8 }}>
+                Click a tile to inspect its status.
+              </div>
+            ) : null}
           </Section>
 
           {/* Status messages */}
