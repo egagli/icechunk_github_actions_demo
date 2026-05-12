@@ -45,12 +45,8 @@ def main():
         years=config.YEARS,
     )
 
-    # Drop ocean tiles — the map filters on land=true anyway.
-    gdf = gdf[gdf["status"] != "ocean"].copy()
-
-    # Keep only columns the map needs.
-    keep = ["row", "col", "land", "status", "geometry"]
-    gdf = gdf[[c for c in keep if c in gdf.columns]]
+    # Keep all tiles (including ocean) and all columns so the map can display
+    # the full per-tile stats in the info panel.
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     gdf.to_file(OUTPUT, driver="GeoJSON")
