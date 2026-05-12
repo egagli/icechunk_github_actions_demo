@@ -1,5 +1,8 @@
 # icechunk-github-actions-demo
 
+Author: Eric Gagliano (egagli@uw.edu) and assisted by claude code  
+Last updated: May 11th, 2026  
+
 This repository demonstrates how to build a **global-scale raster dataset** using
 [GitHub Actions](https://docs.github.com/en/actions) as free, massively parallel compute and
 [Icechunk](https://icechunk.io) as a versioned Zarr v3 store. The key insight: Icechunk's
@@ -10,7 +13,7 @@ Each GitHub Actions runner processes one 10°×10° spatial tile, fetches data f
 and commits its results; concurrent writes to non-overlapping tile regions are automatically
 rebased by Icechunk and never conflict.
 
-The concrete dataset is annual mean and maximum MODIS daytime land surface temperature
+The output dataset is annual mean and maximum MODIS daytime land surface temperature
 ([MOD11A2 v6.1](https://lpdaac.usgs.gov/products/mod11a2v061/)) for 2020–2022, stored
 globally at 0.01° (~1 km) in EPSG:4326 — an 18,000 × 36,000 pixel grid. Processing
 250,992 MODIS granules (752.98 GB of input data) across 376 land tiles took ~40 minutes
