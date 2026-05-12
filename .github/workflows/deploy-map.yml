@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'map/**'
+      - 'tile_list.geojson'
+      - 'icechunk_github_actions_demo/**'
   workflow_dispatch:
 
 permissions:
@@ -19,12 +21,24 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: map
     steps:
       - uses: actions/checkout@v4
 
+      # --- Python: generate tiles-status.geojson from Icechunk history ------
+      - uses: prefix-dev/setup-pixi@v0.8.3
+        with:
+          pixi-version: v0.39.0
+          environments: ci
+
+      - name: Generate tiles status GeoJSON
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_SAS_TOKEN: ${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
+          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
+          ICECHUNK_PREFIX: ${{ secrets.ICECHUNK_PREFIX }}
+        run: pixi run -e ci python map/generate_tiles_status_geojson.py
+
+      # --- Node: build Next.js static export --------------------------------
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -32,9 +46,11 @@ jobs:
           cache-dependency-path: map/package-lock.json
 
       - name: Install dependencies
+        working-directory: map
         run: npm ci
 
       - name: Build
+        working-directory: map
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
