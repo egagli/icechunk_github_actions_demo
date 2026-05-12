@@ -30,6 +30,10 @@ rendering Zarr data as map tiles), Next.js, and deployed automatically to GitHub
 `deploy-map.yml`. The map shows both tile processing status and the actual LST values
 rendered directly from the Zarr store. Source lives in [`map/`](map/).
 
+<img width="1613" height="994" alt="image" src="https://github.com/user-attachments/assets/f0d43fa1-adb5-4703-bd9e-692066737830" />   
+
+Check out [the interactive map](https://egagli.github.io/icechunk_github_actions_demo/)! 
+
 ---
 
 ## Architecture
