@@ -12,6 +12,7 @@ The concrete dataset is annual average and maximum MODIS daytime land surface
 temperature ([MOD11A2 v6.1](https://lpdaac.usgs.gov/products/mod11a2v061/)) for
 2020–2022, stored globally at 0.01° (~1 km) in EPSG:4326.
 
+Check out the interactive map powered by [zarr-layer](https://github.com/carbonplan/zarr-layer) here: https://egagli.github.io/icechunk_github_actions_demo/  
 ---
 
 ## Architecture
