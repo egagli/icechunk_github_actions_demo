@@ -5,3 +5,8 @@ config/config_with_secrets*.txt
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Node
+map/node_modules/
+map/.next/
+map/out/
