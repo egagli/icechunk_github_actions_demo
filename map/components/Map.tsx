@@ -20,7 +20,12 @@ const YEARS = [2020, 2021, 2022] as const
 type Year = (typeof YEARS)[number]
 
 // Data is stored as float32 Celsius (273.15 subtracted before writing).
-const yearSelector = (y: Year) => ({ year: y })
+// year coordinate is int64 (BigInt) — zarr-layer's indexOf(number) vs BigInt fails,
+// so bypass coordinate lookup with explicit type:'index'.
+const YEAR_IDX: Record<Year, number> = { 2020: 0, 2021: 1, 2022: 2 }
+const yearSelector = (y: Year) => ({
+  year: { selected: YEAR_IDX[y], type: 'index' as const },
+})
 
 const VARIABLE_CONFIGS = {
   avg_daytime_lst: {
