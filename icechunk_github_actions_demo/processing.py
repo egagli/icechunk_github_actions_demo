@@ -6,7 +6,6 @@ import numpy as np
 import odc.geo.xr  # registers .odc accessor needed for reproject workaround
 import odc.stac
 import planetary_computer
-import pystac
 import pystac_client
 
 logger = logging.getLogger(__name__)
@@ -27,12 +26,15 @@ def _is_antimeridian_tile(bbox):
 def _utm_crs_for_tile(bbox):
     """Return a UTM CRS whose central meridian keeps ±180° away from any edge.
 
-    col 35 (lon 170-180°E): UTM Zone 60N centred at 177°E (EPSG:32660)
-    col  0 (lon -180–-170°): UTM Zone 1N  centred at 177°W (EPSG:32601)
+    col 35 (lon 170-180°E): UTM Zone 60N/S centred at 177°E
+    col  0 (lon -180–-170°): UTM Zone 1N/S  centred at 177°W
+    N/S variant chosen by tile centre latitude so coordinates stay in the
+    standard positive-northing range for that hemisphere.
     """
+    south = (bbox.top + bbox.bottom) / 2 < 0
     if bbox.right >= 179.999:
-        return "EPSG:32660"  # UTM Zone 60N, central meridian 177°E
-    return "EPSG:32601"      # UTM Zone 1N,  central meridian 177°W
+        return "EPSG:32760" if south else "EPSG:32660"
+    return "EPSG:32701" if south else "EPSG:32601"
 
 
 def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
@@ -59,25 +61,6 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
         bbox=[bbox.left, bbox.bottom, bbox.right, bbox.top],
         datetime=f"{year}-01-01/{year}-12-31",
     ).item_collection()
-
-    if _is_antimeridian_tile(bbox):
-        # PC STAC issue #476: some MODIS granules near ±180° are stored with
-        # wrapped/negative-longitude bboxes and are missed by the primary
-        # search. A supplementary search on the mirrored bbox recovers them.
-        wrapped_bbox = [-180, bbox.bottom, -170, bbox.top]
-        items_wrapped = catalog.search(
-            collections=["modis-11A2-061"],
-            bbox=wrapped_bbox,
-            datetime=f"{year}-01-01/{year}-12-31",
-        ).item_collection()
-        seen_ids = {i.id for i in items}
-        extra = [i for i in items_wrapped if i.id not in seen_ids]
-        if extra:
-            logger.info(
-                f"  [{year}] Supplementary antimeridian search added "
-                f"{len(extra)} extra item(s)"
-            )
-            items = pystac.ItemCollection(list(items) + extra)
 
     if not items:
         logger.info(f"  [{year}] No items found, skipping")
