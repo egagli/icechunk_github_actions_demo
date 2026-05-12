@@ -1,7 +1,9 @@
 # icechunk-github-actions-demo
 
-Author: Eric Gagliano (egagli@uw.edu) and assisted by claude code  
-Last updated: May 11th, 2026  
+**Author:** Eric Gagliano (egagli@uw.edu) and assisted by claude code  
+**Last updated:** May 11th, 2026  
+
+---  
 
 This repository demonstrates how to build a **global-scale raster dataset** using
 [GitHub Actions](https://docs.github.com/en/actions) as free, massively parallel compute and
