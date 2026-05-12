@@ -360,13 +360,14 @@ export default function Map() {
       'address_label'
     )
     // Highlight layers — initially hidden via impossible filter.
+    // Dark semi-transparent overlay + thick dark border to mark the selection.
     map.addLayer(
       {
         id: 'tiles-highlight',
         type: 'fill',
         source: 'tiles-status',
         filter: ['==', false, true],
-        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.18 },
+        paint: { 'fill-color': '#000000', 'fill-opacity': 0.25 },
         layout: { visibility: 'none' },
       } as maplibregl.FillLayerSpecification,
       'address_label'
@@ -377,7 +378,7 @@ export default function Map() {
         type: 'line',
         source: 'tiles-status',
         filter: ['==', false, true],
-        paint: { 'line-color': ACCENT, 'line-width': 2.5 },
+        paint: { 'line-color': '#000000', 'line-width': 3 },
         layout: { visibility: 'none' },
       } as maplibregl.LineLayerSpecification,
       'address_label'
@@ -508,20 +509,13 @@ export default function Map() {
             MODIS Land Surface Temperature
           </div>
           <div style={{ fontSize: 11, color: DIM, lineHeight: 1.6 }}>
-            NASA MODIS MYD11C3 v6.1 · 0.01° (~1 km) resolution
+            Demo: GitHub Actions as free parallel compute +{' '}
+            <a href="https://icechunk.io" target="_blank" rel="noopener noreferrer" style={{ color: ACCENT, textDecoration: 'none' }}>Icechunk</a>
+            {' '}as a versioned Zarr v3 store.
+            376 tiles written concurrently with zero conflicts.
             <br />
-            Annual mean &amp; max daytime composites · 2020–2022
+            NASA MODIS MYD11C3 v6.1 · 0.01° (~1 km) · annual mean &amp; max · 2020–2022
             <br />
-            Served from{' '}
-            <a
-              href="https://icechunk.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: ACCENT, textDecoration: 'none' }}
-            >
-              Icechunk
-            </a>
-            {' '}via{' '}
             <a
               href="https://github.com/egagli/icechunk_github_actions_demo"
               target="_blank"
@@ -675,7 +669,7 @@ export default function Map() {
           {/* Overlays */}
           <Section label="Overlays">
             <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
-              Processing tiles
+              Processing grid &amp; tile status
             </button>
 
             {showTiles && (
