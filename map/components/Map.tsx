@@ -4,7 +4,6 @@ import { Protocol } from 'pmtiles'
 import { layers, namedFlavor } from '@protomaps/basemaps'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import { makeColormap } from '@carbonplan/colormaps'
-import { IcechunkStore, HttpStorage } from 'icechunk-js'
 
 // ---------------------------------------------------------------------------
 // Store configuration
@@ -21,11 +20,7 @@ const YEARS = [2020, 2021, 2022] as const
 type Year = (typeof YEARS)[number]
 
 // Data is stored as float32 Celsius (273.15 subtracted before writing).
-// Using type:'index' bypasses zarr-layer coordinate lookup (fails on Icechunk stores).
-const YEAR_IDX: Record<Year, number> = { 2020: 0, 2021: 1, 2022: 2 }
-const yearSelector = (y: Year) => ({
-  year: { selected: YEAR_IDX[y], type: 'index' as const },
-})
+const yearSelector = (y: Year) => ({ year: y })
 
 const VARIABLE_CONFIGS = {
   avg_daytime_lst: {
@@ -99,16 +94,11 @@ export default function Map() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const layerRef = useRef<InstanceType<typeof ZarrLayer> | null>(null)
-  const storeRef = useRef<IcechunkStore | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
 
   // Map state
   const [globeProjection, setGlobeProjection] = useState(true)
   const [mapLoaded, setMapLoaded] = useState(false)
-
-  // Store state
-  const [storeReady, setStoreReady] = useState(false)
-  const [storeError, setStoreError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   // Data controls
@@ -182,22 +172,10 @@ export default function Map() {
     )
   }, [mapLoaded, globeProjection])
 
-  // -- IcechunkStore (once) -------------------------------------------------
-  useEffect(() => {
-    const storage = new HttpStorage(AZURE_BASE)
-    IcechunkStore.open(storage, { branch: 'main' })
-      .then((store) => {
-        storeRef.current = store
-        setStoreReady(true)
-      })
-      .catch((err: unknown) => setStoreError(String(err)))
-  }, [])
-
   // -- ZarrLayer (recreated when variable changes) --------------------------
   useEffect(() => {
-    if (!mapLoaded || !storeReady || !mapRef.current) return
+    if (!mapLoaded || !mapRef.current) return
     const map = mapRef.current
-    const store = storeRef.current!
 
     try {
       if (map.getLayer('zarr-layer')) map.removeLayer('zarr-layer')
@@ -205,7 +183,7 @@ export default function Map() {
 
     const zarrLayer = new ZarrLayer({
       id: 'zarr-layer',
-      store,
+      source: AZURE_BASE,
       variable,
       clim,
       colormap: colormapArray,
@@ -261,7 +239,7 @@ export default function Map() {
       layerRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapLoaded, storeReady, variable])
+  }, [mapLoaded, variable])
 
   // -- Live updates (no layer recreation) -----------------------------------
   useEffect(() => {
@@ -555,25 +533,7 @@ export default function Map() {
           </Section>
 
           {/* Status messages */}
-          {!storeReady && !storeError && <StatusRow>Opening Icechunk store…</StatusRow>}
-          {storeReady && isLoading && <StatusRow>Loading chunks…</StatusRow>}
-          {storeError && (
-            <div
-              style={{
-                fontSize: 12,
-                color: '#f87171',
-                wordBreak: 'break-word',
-                padding: '8px 10px',
-                background: '#2a1a1a',
-                borderRadius: 4,
-                border: '1px solid #5a2020',
-              }}
-            >
-              <strong>Store error:</strong>
-              <br />
-              {storeError}
-            </div>
-          )}
+          {isLoading && <StatusRow>Loading chunks…</StatusRow>}
         </div>
 
         {/* Footer */}
