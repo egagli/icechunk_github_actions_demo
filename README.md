@@ -296,8 +296,8 @@ committed concurrently as runners finish:
 
 ![Tile status after first run — one tile remaining unprocessed](https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1)
 
-**5. After re-running** — the workflow is idempotent; it picks up exactly the
-remaining tile and finishes:
+**5. After re-running** — the workflow is idempotent; it picks up only the
+remaining tiles and finishes:
 
 ![Tile status after second run — all tiles processed](https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3)
 
