@@ -80,7 +80,8 @@ Processing status once we've run the process all tiles github action.....
 <img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1" />
 
 Looks like on tile remains unprocessed, let's run the process all tiles github action once more....
-
+<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3" />  
+All tiles processed!!
 
 ---
 
