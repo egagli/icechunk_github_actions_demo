@@ -1,18 +1,30 @@
 # icechunk-github-actions-demo
 
-A minimum reproducible example of building a **global-scale raster dataset** using
-[GitHub Actions](https://docs.github.com/en/actions) as free compute and
-[Icechunk](https://icechunk.io) as a versioned Zarr v3 store. The GitHub Actions
-patterns used here draw from the
+This repository demonstrates how to build a **global-scale raster dataset** using
+[GitHub Actions](https://docs.github.com/en/actions) as free, massively parallel compute and
+[Icechunk](https://icechunk.io) as a versioned Zarr v3 store. The key insight: Icechunk's
+ACID commit model with `ConflictDetector` allows hundreds of independent runners to write
+to the same store concurrently — without any external coordinator, lock file, or queue.
+Each GitHub Actions runner processes one 10°×10° spatial tile, fetches data from
+[Planetary Computer](https://planetarycomputer.microsoft.com), computes annual statistics,
+and commits its results; concurrent writes to non-overlapping tile regions are automatically
+rebased by Icechunk and never conflict.
+
+The concrete dataset is annual mean and maximum MODIS daytime land surface temperature
+([MOD11A2 v6.1](https://lpdaac.usgs.gov/products/mod11a2v061/)) for 2020–2022, stored
+globally at 0.01° (~1 km) in EPSG:4326 — an 18,000 × 36,000 pixel grid. Processing
+250,992 MODIS granules (752.98 GB of input data) across 376 land tiles took ~40 minutes
+of GitHub Actions time and produced a 1.17 GB Zarr store containing annual summaries.
+The GitHub Actions patterns here draw from the
 [SciPy 2024 GitHub Actions for Science tutorial](https://scipy2024-githubactionstutorial.readthedocs.io/en/latest/intro.html)
-([repo](https://github.com/uwescience/SciPy2024-GitHubActionsTutorial)). Each GitHub Actions runner processes one spatial tile; all runners
-write to the same store concurrently without any external coordination.
+([repo](https://github.com/uwescience/SciPy2024-GitHubActionsTutorial)).
 
-The concrete dataset is annual average and maximum MODIS daytime land surface
-temperature ([MOD11A2 v6.1](https://lpdaac.usgs.gov/products/mod11a2v061/)) for
-2020–2022, stored globally at 0.01° (~1 km) in EPSG:4326.
+The finished dataset powers an [interactive map](https://egagli.github.io/icechunk_github_actions_demo/)
+built with [zarr-layer](https://github.com/carbonplan/zarr-layer) (CarbonPlan's library for
+rendering Zarr data as map tiles), Next.js, and deployed automatically to GitHub Pages via
+`deploy-map.yml`. The map shows both tile processing status and the actual LST values
+rendered directly from the Zarr store. Source lives in [`map/`](map/).
 
-Check out the interactive map powered by [zarr-layer](https://github.com/carbonplan/zarr-layer) here: https://egagli.github.io/icechunk_github_actions_demo/  
 ---
 
 ## Architecture
@@ -21,8 +33,8 @@ Check out the interactive map powered by [zarr-layer](https://github.com/carbonp
 ┌─────────────────────────────────────────────────────────────┐
 │                    Azure Blob Storage                        │
 │              Icechunk store (Zarr v3)                        │
-│   avg_daytime_lst[year, latitude, longitude]  uint16         │
-│   max_daytime_lst[year, latitude, longitude]  uint16         │
+│   avg_daytime_lst[year, latitude, longitude]  float32        │
+│   max_daytime_lst[year, latitude, longitude]  float32        │
 │   shape: (3, 18000, 36000)  chunks: (1, 1000, 1000)         │
 └─────────────────────────────────────────────────────────────┘
          ↑ write (region)      ↑ read (commit history)
@@ -40,102 +52,6 @@ Check out the interactive map powered by [zarr-layer](https://github.com/carbonp
    unprocessed land tile, each writes its region and commits
 3. Re-run `Process All Tiles` at any time — already-processed tiles are
    automatically skipped; only failures or new tiles are re-processed
-
----
-
-## Repository structure
-
-```text
-icechunk_github_actions_demo/
-├── pixi.toml
-├── tile_list.geojson               # all 648 tiles with land boolean; committed
-├── config/
-│   ├── config_v1.txt               # dataset params + credentials as ENV placeholders
-│   └── config_with_secrets_v1.txt  # literal credentials for local runs (gitignored)
-├── icechunk_github_actions_demo/   # Python package
-│   ├── __init__.py                 # exports Config, get_processing_status_gdf, list_processed_tiles
-│   ├── config.py                   # Config class, geobox utilities, commit message constants
-│   └── processing.py               # fetch_annual_lst
-├── scripts/
-│   ├── generate_tile_matrix.py     # prints JSON matrix of unprocessed tiles
-│   └── process_tile.py             # fetches + commits one tile
-├── notebooks/
-│   ├── 01_initialize_and_setup.ipynb   # run once to create tile_list.geojson and the store
-│   └── 02_processing_status.ipynb      # visualize processing progress
-└── .github/workflows/
-    ├── process_all_tiles.yml       # main workflow: generates batch list, calls process_tile_batch.yml per batch
-    ├── process_tile_batch.yml      # reusable workflow: matrix of up to 256 tiles for one batch
-    └── process_single_tile.yml     # manual dispatch for testing/reprocessing one tile
-```
-
-Determine which tiles to process.....  
-<img width="3570" height="1971" alt="image" src="https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b" />  
-
-Processing status after we've initialized the store but before we've run the process all tiles github action.....  
-<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a" />  
-
-Processing status while we're running the process all tiles github action.....
-<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422" />  
-
-Processing status once we've run the process all tiles github action.....
-<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1" />
-
-Looks like on tile remains unprocessed, let's run the process all tiles github action once more....
-<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3" />  
-All tiles processed!!
-
-
-Some stats.....
-Land tiles:   381
-Processed:    376
-No-data:      5
-Unprocessed:  0
-Progress:     100.0%
-
-Total input data volume: 752.98 GB (250992 granules)  
-Total data volume of output Zarr store: 1.17 GB (5,188 objects)  
-Github actions run time: ~40 minutes
-
-
-
----
-
-## Quick Start
-
-### 1. Fork and clone this repository
-
-### 2. Create an Azure Blob Storage container
-
-Any Azure Blob container works. Note the account name, container name, and
-generate a SAS token with read+write permissions.
-
-### 3. Set GitHub repository secrets
-
-Go to **Settings → Secrets and variables → Actions** and add:
-
-| Secret | Description |
-| --- | --- |
-| `AZURE_STORAGE_ACCOUNT` | Azure storage account name |
-| `AZURE_STORAGE_SAS_TOKEN` | SAS token with read/write access |
-| `AZURE_CONTAINER` | Container name |
-| `ICECHUNK_PREFIX` | Path prefix within the container, e.g. `modis-lst-demo` |
-
-### 4. Initialize the store
-
-Run notebook `notebooks/01_initialize_and_setup.ipynb` once locally.
-This creates `tile_list.geojson` (commit it to the repo) and the empty Icechunk
-repository with metadata only — no data chunks.
-
-### 5. Process all tiles
-
-Run the **Process All Tiles** workflow from the Actions tab. It will:
-
-- Read `tile_list.geojson` and the Icechunk commit history to find unprocessed land tiles (~381)
-- Dispatch one GitHub Actions job per tile (all in parallel)
-- Each job fetches MODIS LST from Planetary Computer, computes annual stats,
-  and commits results to the store
-
-Re-run whenever needed; the workflow is idempotent.
 
 ---
 
@@ -267,10 +183,11 @@ guarantees output pixel coordinates are bit-for-bit slices of the global store g
 from icechunk_github_actions_demo.processing import fetch_annual_lst
 
 tile_geobox = config.tile_geobox(tile_row, tile_col)
-avg_lst, max_lst = fetch_annual_lst(tile_geobox, year, config.PIXELS_PER_TILE)
+avg_lst, max_lst, granule_count = fetch_annual_lst(tile_geobox, year, config.PIXELS_PER_TILE)
 ```
 
-Inside `fetch_annual_lst`:
+Inside `fetch_annual_lst`, quality filtering and the MODIS scale factor are applied
+during fetch — values are returned in Kelvin (float), not raw uint16:
 
 ```python
 bbox = tile_geobox.boundingbox
@@ -281,10 +198,12 @@ items = catalog.search(
 ).item_collection()
 
 ds = odc.stac.load(items, bands=["LST_Day_1km", "QC_Day"], geobox=tile_geobox, ...)
+# QC_Day bits 0-1: 0b00 = good, 0b01 = nominal quality
 good = (ds.QC_Day & 0b11) <= 1
-lst = ds.LST_Day_1km.where(good).where(ds.LST_Day_1km >= 7500)
-avg_lst = lst.mean("time").compute().astype(np.uint16)
-max_lst = lst.max("time").compute().astype(np.uint16)
+lst = ds.LST_Day_1km.where(good).where(ds.LST_Day_1km >= 7500) * 0.02  # → Kelvin
+lst = lst.compute()
+avg_lst = lst.mean("time")
+max_lst = lst.max("time")
 ```
 
 **Writing**: each year is written to its integer-indexed region in the store.
@@ -341,8 +260,124 @@ repo = icechunk.Repository.open(storage)
 session = repo.readonly_session("main")
 
 ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False)
-# Apply scale factor to get Kelvin: 0 means no data
-lst_k = ds["avg_daytime_lst"].where(ds["avg_daytime_lst"] > 0) * 0.02
+# Scale factor applied during processing; values are in Kelvin. Mask fill value (0 = no data).
+lst_k = ds["avg_daytime_lst"].where(ds["avg_daytime_lst"] > 0)
+```
+
+---
+
+## Processing in Practice
+
+The progression below shows the pipeline running end-to-end, visualized using
+notebook `02_processing_status.ipynb` which calls `get_processing_status_gdf`
+to query tile status directly from the Icechunk commit history.
+
+**1. Determining which tiles to process** — `generate_tile_matrix.py` queries
+unprocessed land tiles from the Icechunk history and outputs the job matrix:
+
+![Tile matrix generation — workflow logic for determining which tiles to process](https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b)
+
+**2. After initialization, before processing** — the store exists with metadata
+only; all land tiles are unprocessed:
+
+![Tile status after initialization — all land tiles unprocessed](https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a)
+
+**3. Mid-run** — the `Process All Tiles` workflow is in flight; tiles are being
+committed concurrently as runners finish:
+
+![Tile status mid-run — jobs committing concurrently as runners finish](https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422)
+
+**4. After first run** — nearly complete, with one tile still unprocessed:
+
+![Tile status after first run — one tile remaining unprocessed](https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1)
+
+**5. After re-running** — the workflow is idempotent; it picks up exactly the
+remaining tile and finishes:
+
+![Tile status after second run — all tiles processed](https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3)
+
+### Results
+
+| Stat | Value |
+| --- | --- |
+| Land tiles | 381 |
+| Processed | 376 |
+| No-data (no MODIS coverage) | 5 |
+| Unprocessed | 0 |
+| Total input data processed | 752.98 GB (250,992 granules from Planetary Computer) |
+| Output Zarr store size | 1.17 GB (5,188 objects in Azure Blob) |
+| GitHub Actions run time | ~40 minutes |
+
+The 752 GB reflects the total volume of raw MODIS granules downloaded and processed
+across all tiles and years. The 1.17 GB output is the resulting analytical store —
+annual mean and max summaries rather than the full 8-day time series.
+
+---
+
+## Quick Start
+
+### 1. Fork and clone this repository
+
+### 2. Create an Azure Blob Storage container
+
+Any Azure Blob container works. Note the account name, container name, and
+generate a SAS token with read+write permissions.
+
+### 3. Set GitHub repository secrets
+
+Go to **Settings → Secrets and variables → Actions** and add:
+
+| Secret | Description |
+| --- | --- |
+| `AZURE_STORAGE_ACCOUNT` | Azure storage account name |
+| `AZURE_STORAGE_SAS_TOKEN` | SAS token with read/write access |
+| `AZURE_CONTAINER` | Container name |
+| `ICECHUNK_PREFIX` | Path prefix within the container, e.g. `modis-lst-demo` |
+
+### 4. Initialize the store
+
+Run notebook `notebooks/01_initialize_and_setup.ipynb` once locally.
+This creates `tile_list.geojson` (commit it to the repo) and the empty Icechunk
+repository with metadata only — no data chunks.
+
+### 5. Process all tiles
+
+Run the **Process All Tiles** workflow from the Actions tab. It will:
+
+- Read `tile_list.geojson` and the Icechunk commit history to find unprocessed land tiles (~381)
+- Dispatch one GitHub Actions job per tile (all in parallel)
+- Each job fetches MODIS LST from Planetary Computer, computes annual stats,
+  and commits results to the store
+
+Re-run whenever needed; the workflow is idempotent.
+
+---
+
+## Repository structure
+
+```text
+icechunk_github_actions_demo/
+├── pixi.toml
+├── tile_list.geojson               # all 648 tiles with land boolean; committed
+├── config/
+│   ├── config_v1.txt               # dataset params + credentials as ENV placeholders
+│   └── config_with_secrets_v1.txt  # literal credentials for local runs (gitignored)
+├── icechunk_github_actions_demo/   # Python package
+│   ├── __init__.py                 # exports Config, get_processing_status_gdf, list_processed_tiles
+│   ├── config.py                   # Config class, geobox utilities, commit message constants
+│   └── processing.py               # fetch_annual_lst
+├── scripts/
+│   ├── generate_tile_matrix.py     # prints JSON matrix of unprocessed tiles
+│   └── process_tile.py             # fetches + commits one tile
+├── notebooks/
+│   ├── 01_initialize_and_setup.ipynb   # run once to create tile_list.geojson and the store
+│   └── 02_processing_status.ipynb      # visualize processing progress
+├── map/                            # interactive map (Next.js + zarr-layer → GitHub Pages)
+└── .github/workflows/
+    ├── process_all_tiles.yml       # main workflow: generates batch list, calls process_tile_batch.yml per batch
+    ├── process_tile_batch.yml      # reusable workflow: matrix of up to 256 tiles for one batch
+    ├── process_single_tile.yml     # manual dispatch for testing/reprocessing one tile
+    └── deploy-map.yml              # builds and deploys the interactive map to GitHub Pages
 ```
 
 ---
@@ -426,6 +461,7 @@ PIXELS_PER_TILE = 1000
 TILE_ROWS = 18
 TILE_COLS = 36
 FILL_VALUE = 0
+TILE_LIST_PATH = tile_list.geojson
 AZURE_STORAGE_ACCOUNT = ENV
 AZURE_STORAGE_SAS_TOKEN = ENV
 AZURE_CONTAINER = ENV
