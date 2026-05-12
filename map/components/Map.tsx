@@ -360,14 +360,14 @@ export default function Map() {
       'address_label'
     )
     // Highlight layers — initially hidden via impossible filter.
-    // Dark semi-transparent overlay + thick dark border to mark the selection.
+    // Bright outline + light white overlay to mark the selection on any basemap.
     map.addLayer(
       {
         id: 'tiles-highlight',
         type: 'fill',
         source: 'tiles-status',
         filter: ['==', false, true],
-        paint: { 'fill-color': '#000000', 'fill-opacity': 0.25 },
+        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.2 },
         layout: { visibility: 'none' },
       } as maplibregl.FillLayerSpecification,
       'address_label'
@@ -378,7 +378,7 @@ export default function Map() {
         type: 'line',
         source: 'tiles-status',
         filter: ['==', false, true],
-        paint: { 'line-color': '#000000', 'line-width': 3 },
+        paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 1 },
         layout: { visibility: 'none' },
       } as maplibregl.LineLayerSpecification,
       'address_label'
