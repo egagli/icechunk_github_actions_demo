@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'icechunk_github_actions_demo/map/**'
+      - 'map/**'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: icechunk_github_actions_demo/map
+        working-directory: map
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: icechunk_github_actions_demo/map/package-lock.json
+          cache-dependency-path: map/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: icechunk_github_actions_demo/map/out
+          path: map/out
 
   deploy:
     needs: build
