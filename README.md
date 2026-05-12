@@ -1,4 +1,4 @@
-# icechunk-github-actions-demo
+# icechunk_github_actions_demo
 
 **Author:** Eric Gagliano (egagli@uw.edu) and assisted by claude code  
 **Last updated:** May 11th, 2026  
@@ -494,3 +494,10 @@ To adapt this demo for a different dataset, update `config/config_v1.txt`,
 re-run notebook `01_initialize_and_setup.ipynb` to regenerate `tile_list.geojson`
 and reinitialize the store, then replace the data fetching logic in
 `icechunk_github_actions_demo/processing.py`.
+
+---  
+
+Please feel free to contact me or contribute to this repo! This is just a first iteration of trying to fit a bunch of new tools together, so likely many issues here and much room for improvement!!!
+  
+
+
