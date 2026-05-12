@@ -108,21 +108,22 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
         max_lst = lst.max("time").odc.reproject(
             tile_geobox, resampling="nearest"
         )
-        # Force exact pixel coords; odc.reproject may name them
-        # longitude/latitude instead of x/y.
+        # Force exact pixel coords and normalize dim names to longitude/latitude,
+        # matching what odc.stac.load produces for EPSG:4326 geoboxes on the
+        # regular (non-antimeridian) path and what the Zarr store expects.
         ny, nx = tile_geobox.shape.yx
         t = tile_geobox.affine
-        x_name = "x" if "x" in avg_lst.coords else "longitude"
-        y_name = "y" if "y" in avg_lst.coords else "latitude"
+        x_name = "longitude" if "longitude" in avg_lst.coords else "x"
+        y_name = "latitude" if "latitude" in avg_lst.coords else "y"
         coord_patch = {
             x_name: (x_name, t.c + t.a * (np.arange(nx) + 0.5)),
             y_name: (y_name, t.f + t.e * (np.arange(ny) + 0.5)),
         }
         avg_lst = avg_lst.assign_coords(coord_patch)
         max_lst = max_lst.assign_coords(coord_patch)
-        if x_name != "x":
-            avg_lst = avg_lst.rename({x_name: "x", y_name: "y"})
-            max_lst = max_lst.rename({x_name: "x", y_name: "y"})
+        if x_name == "x":  # normalize to longitude/latitude to match regular path
+            avg_lst = avg_lst.rename({"x": "longitude", "y": "latitude"})
+            max_lst = max_lst.rename({"x": "longitude", "y": "latitude"})
         logger.info(f"  [{year}] Compute complete")
         return avg_lst, max_lst, granule_count
 
