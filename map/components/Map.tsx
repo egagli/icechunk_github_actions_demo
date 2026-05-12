@@ -391,23 +391,16 @@ export default function Map() {
 
     const tileClickHandler = (e: maplibregl.MapLayerMouseEvent) => {
       const feature = e.features?.[0]
-      console.log('[tile click] feature:', feature)
-      console.log('[tile click] geometry:', feature?.geometry)
       if (!feature) return
       const props = feature.properties as Record<string, unknown>
       const status = (props.status as string) ??
         (props.land === false ? 'ocean' : 'unknown')
       setTileClickInfo({ ...props, status } as TileClickInfo)
       const hlSrc = map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource | undefined
-      console.log('[tile click] highlight source:', hlSrc)
-      if (hlSrc) {
-        const data = {
-          type: 'FeatureCollection' as const,
-          features: [{ type: 'Feature' as const, geometry: feature.geometry, properties: {} }],
-        }
-        console.log('[tile click] setData:', data)
-        hlSrc.setData(data)
-      }
+      hlSrc?.setData({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', geometry: feature.geometry, properties: {} }],
+      })
     }
     const cursorOn  = () => { map.getCanvas().style.cursor = 'pointer' }
     const cursorOff = () => { map.getCanvas().style.cursor = '' }
@@ -497,14 +490,13 @@ export default function Map() {
     >
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Sidebar */}
+      {/* ── Left sidebar: data controls only ── */}
       <div
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
-          bottom: 0,
-          width: 320,
+          width: 260,
           background: 'rgba(22,25,30,0.96)',
           borderRight: `1px solid ${BORDER}`,
           backdropFilter: 'blur(6px)',
@@ -513,11 +505,10 @@ export default function Map() {
           color: TEXT,
           fontSize: 13,
           zIndex: 10,
-          overflowY: 'auto',
         }}
       >
         {/* Header */}
-        <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 5, lineHeight: 1.3 }}>
             MODIS Land Surface Temperature
           </div>
@@ -541,9 +532,8 @@ export default function Map() {
         </div>
 
         {/* Controls */}
-        <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Variable */}
           <Section label="Variable">
             {(Object.keys(VARIABLE_CONFIGS) as Variable[]).map((v) => (
               <button key={v} onClick={() => handleVariableChange(v)} style={chipStyle(v === variable)}>
@@ -552,7 +542,6 @@ export default function Map() {
             ))}
           </Section>
 
-          {/* Year */}
           <Section label="Year">
             <div style={{ display: 'flex', gap: 6 }}>
               {YEARS.map((y) => (
@@ -567,7 +556,6 @@ export default function Map() {
             </div>
           </Section>
 
-          {/* Colormap */}
           <Section label="Colormap">
             <select
               value={colormap}
@@ -588,7 +576,6 @@ export default function Map() {
             </div>
           </Section>
 
-          {/* Range */}
           <Section label="Range (°C)">
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
@@ -609,7 +596,6 @@ export default function Map() {
             </div>
           </Section>
 
-          {/* Opacity */}
           <Section label={`Opacity — ${Math.round(opacity * 100)}%`}>
             <input
               type="range" min={0} max={1} step={0.01} value={opacity}
@@ -618,157 +604,138 @@ export default function Map() {
             />
           </Section>
 
-          {/* Inspect */}
-          <Section label="Inspect">
-            {clickInfo ? (
-              <div style={{ padding: '12px 14px', background: '#1e2128', borderRadius: 6, border: `1px solid ${BORDER}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: DIM }}>Selected point</div>
-                  <button
-                    onClick={() => { setClickInfo(null); markerRef.current?.remove(); markerRef.current = null }}
-                    style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
-                    aria-label="Clear marker"
-                  >×</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-                  <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
-                  <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
-                </div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-                  {clickInfo.status === 'querying'
-                    ? 'Querying…'
-                    : clickInfo.valueC !== null
-                    ? `${clickInfo.valueC.toFixed(1)} °C`
-                    : 'No data'}
-                </div>
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic' }}>
-                Select a point to inspect its value.
-              </div>
-            )}
-          </Section>
+          {isLoading && <StatusRow>Loading chunks…</StatusRow>}
+        </div>
+      </div>
 
-          {/* Basemap */}
-          <Section label="Basemap">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
-                <button
-                  key={String(opt.value)}
-                  onClick={() => setShowSatellite(opt.value)}
-                  style={{ ...chipStyle(showSatellite === opt.value), flex: 1, textAlign: 'center' }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </Section>
-
-          {/* Projection */}
+      {/* ── Top-right: Basemap + Projection ── */}
+      <FloatingCard style={{ top: 16, right: 16, width: 180 }}>
+        <Section label="Basemap">
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
+              <button
+                key={String(opt.value)}
+                onClick={() => setShowSatellite(opt.value)}
+                style={{ ...chipStyle(showSatellite === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </Section>
+        <div style={{ marginTop: 14 }}>
           <Section label="Projection">
             <div style={{ display: 'flex', gap: 6 }}>
               {[{ label: 'Globe', value: true }, { label: 'Mercator', value: false }].map((opt) => (
                 <button
                   key={String(opt.value)}
                   onClick={() => setGlobeProjection(opt.value)}
-                  style={{ ...chipStyle(globeProjection === opt.value), flex: 1, textAlign: 'center' }}
+                  style={{ ...chipStyle(globeProjection === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
           </Section>
+        </div>
+      </FloatingCard>
 
-          {/* Overlays */}
-          <Section label="Overlays">
-            <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
-              Processing grid &amp; tile status
-            </button>
+      {/* ── Bottom-left: Overlay controls ── */}
+      <FloatingCard style={{ bottom: 16, left: 16, width: 240, maxHeight: '50vh', overflowY: 'auto' }}>
+        <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
+          Processing grid &amp; tile status
+        </button>
 
-            {showTiles && (
-              <>
-                {/* Legend */}
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8,
-                  padding: '8px 10px', background: '#1e2128', borderRadius: 4, border: `1px solid ${BORDER}`,
-                }}>
-                  {Object.entries(TILE_STATUS_META).map(([, { color, label }]) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, color: DIM }}>{label}</span>
+        {showTiles && (
+          <>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8,
+              padding: '8px 10px', background: '#1e2128', borderRadius: 4, border: `1px solid ${BORDER}`,
+            }}>
+              {Object.entries(TILE_STATUS_META).map(([, { color, label }]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, color: DIM }}>{label}</span>
+                </div>
+              ))}
+            </div>
+
+            {tileClickInfo ? (
+              <div style={{
+                marginTop: 8, padding: '14px', background: '#1e2128',
+                borderRadius: 6, border: `1px solid ${BORDER}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: 2, flexShrink: 0,
+                      background: TILE_STATUS_META[tileClickInfo.status]?.color ?? TILE_COLOR_UNKNOWN,
+                    }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                      {TILE_STATUS_META[tileClickInfo.status]?.label ?? tileClickInfo.status}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setTileClickInfo(null)}
+                    style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+                    aria-label="Clear tile selection"
+                  >×</button>
+                </div>
+                <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+                  {(['row', 'col'] as const).map((k) => (
+                    <div key={k}>
+                      <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                        {k}
+                      </div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+                        {String(tileClickInfo[k])}
+                      </div>
                     </div>
                   ))}
                 </div>
-
-                {/* Selected tile info */}
-                {tileClickInfo ? (
-                  <div style={{
-                    marginTop: 8, padding: '14px', background: '#1e2128',
-                    borderRadius: 6, border: `1px solid ${BORDER}`,
-                  }}>
-                    {/* Header row */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{
-                          width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                          background: TILE_STATUS_META[tileClickInfo.status]?.color ?? TILE_COLOR_UNKNOWN,
-                        }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
-                          {TILE_STATUS_META[tileClickInfo.status]?.label ?? tileClickInfo.status}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setTileClickInfo(null)}
-                        style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
-                        aria-label="Clear tile selection"
-                      >×</button>
-                    </div>
-
-                    {/* Row / Col — prominent */}
-                    <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                      {(['row', 'col'] as const).map((k) => (
-                        <div key={k}>
-                          <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-                            {k}
-                          </div>
-                          <div style={{ fontSize: 24, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-                            {String(tileClickInfo[k])}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* All other properties */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {Object.entries(tileClickInfo)
-                        .filter(([k]) => !['row', 'col', 'status'].includes(k))
-                        .map(([k, v]) => (
-                          <CoordRow key={k} label={propLabel(k)} value={formatPropValue(v)} />
-                        ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic', marginTop: 8 }}>
-                    Click a tile to inspect its status.
-                  </div>
-                )}
-              </>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {Object.entries(tileClickInfo)
+                    .filter(([k]) => !['row', 'col', 'status'].includes(k))
+                    .map(([k, v]) => (
+                      <CoordRow key={k} label={propLabel(k)} value={formatPropValue(v)} />
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic', marginTop: 8 }}>
+                Click a tile to inspect its status.
+              </div>
             )}
-          </Section>
+          </>
+        )}
+      </FloatingCard>
 
-          {isLoading && <StatusRow>Loading chunks…</StatusRow>}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '10px 20px', borderTop: `1px solid ${BORDER}`, fontSize: 10, color: '#444', lineHeight: 1.5, flexShrink: 0 }}>
-          Data: NASA MODIS MYD11C3 v6.1 · Map:{' '}
-          <a href="https://protomaps.com" style={{ color: '#555' }}>Protomaps</a>
-          {' '}·{' '}
-          <a href="https://github.com/carbonplan/zarr-layer" style={{ color: '#555' }}>zarr-layer</a>
-          {' '}·{' '}
-          <a href="https://icechunk.io" style={{ color: '#555' }}>Icechunk</a>
-        </div>
-      </div>
+      {/* ── Bottom-right: Inspect result ── */}
+      {clickInfo && (
+        <FloatingCard style={{ bottom: 16, right: 16, width: 210 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+              Inspect
+            </div>
+            <button
+              onClick={() => { setClickInfo(null); markerRef.current?.remove(); markerRef.current = null }}
+              style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+              aria-label="Clear marker"
+            >×</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+            <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
+            <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+            {clickInfo.status === 'querying'
+              ? 'Querying…'
+              : clickInfo.valueC !== null
+              ? `${clickInfo.valueC.toFixed(1)} °C`
+              : 'No data'}
+          </div>
+        </FloatingCard>
+      )}
     </div>
   )
 }
@@ -776,6 +743,25 @@ export default function Map() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
+
+function FloatingCard({ style, children }: { style: React.CSSProperties; children: React.ReactNode }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      background: 'rgba(22,25,30,0.92)',
+      border: `1px solid ${BORDER}`,
+      borderRadius: 8,
+      backdropFilter: 'blur(6px)',
+      color: TEXT,
+      fontSize: 13,
+      zIndex: 10,
+      padding: '14px',
+      ...style,
+    }}>
+      {children}
+    </div>
+  )
+}
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
