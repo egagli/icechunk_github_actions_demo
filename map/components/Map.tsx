@@ -391,15 +391,23 @@ export default function Map() {
 
     const tileClickHandler = (e: maplibregl.MapLayerMouseEvent) => {
       const feature = e.features?.[0]
+      console.log('[tile click] feature:', feature)
+      console.log('[tile click] geometry:', feature?.geometry)
       if (!feature) return
       const props = feature.properties as Record<string, unknown>
-      // Derive status from land property when status field is absent (baseline GeoJSON).
       const status = (props.status as string) ??
         (props.land === false ? 'ocean' : 'unknown')
       setTileClickInfo({ ...props, status } as TileClickInfo)
-      // Populate the dedicated highlight source directly from the clicked feature.
-      ;(map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource)
-        .setData({ type: 'FeatureCollection', features: [feature] })
+      const hlSrc = map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource | undefined
+      console.log('[tile click] highlight source:', hlSrc)
+      if (hlSrc) {
+        const data = {
+          type: 'FeatureCollection' as const,
+          features: [{ type: 'Feature' as const, geometry: feature.geometry, properties: {} }],
+        }
+        console.log('[tile click] setData:', data)
+        hlSrc.setData(data)
+      }
     }
     const cursorOn  = () => { map.getCanvas().style.cursor = 'pointer' }
     const cursorOff = () => { map.getCanvas().style.cursor = '' }
