@@ -639,8 +639,8 @@ export default function Map() {
         </div>
       </FloatingCard>
 
-      {/* ── Bottom-left: Overlay controls (sits to the right of the sidebar) ── */}
-      <FloatingCard style={{ bottom: 16, left: 276, width: 260, maxHeight: '50vh', overflowY: 'auto' }}>
+      {/* ── Top-right: Overlay controls (below Basemap+Projection card) ── */}
+      <FloatingCard style={{ top: 162, right: 16, width: 180, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
         <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
           Processing grid &amp; tile status
         </button>
@@ -710,7 +710,7 @@ export default function Map() {
       </FloatingCard>
 
       {/* ── Bottom-right: Inspect result (always visible) ── */}
-      <FloatingCard style={{ bottom: 16, right: 16, width: 210 }}>
+      <FloatingCard style={{ bottom: 44, right: 16, width: 210 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
             Inspect
