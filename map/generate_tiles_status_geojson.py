@@ -13,11 +13,17 @@ and ICECHUNK_PREFIX as environment variables (or in a secrets config file).
 
 from pathlib import Path
 
+import sys
+
 import icechunk
 
 # Script lives at map/generate_tiles_status_geojson.py — resolve repo root.
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT = Path(__file__).parent / "public" / "tiles-status.geojson"
+
+# The icechunk_github_actions_demo package has no pyproject.toml / setup.py;
+# make it importable by putting the repo root on sys.path.
+sys.path.insert(0, str(REPO_ROOT))
 
 
 def main():
