@@ -326,6 +326,10 @@ export default function Map() {
 
     map.addSource('tiles-status', { type: 'geojson', data: TILES_STATUS_URL })
 
+    // Separate empty source for the highlight — updated via setData on click.
+    const emptyGeoJSON = { type: 'FeatureCollection' as const, features: [] }
+    map.addSource('tiles-highlight-source', { type: 'geojson', data: emptyGeoJSON })
+
     // Color expression: status field takes precedence; fall back to land property
     // for the tile_list.geojson baseline (which has no status field).
     const fillColor: maplibregl.ExpressionSpecification = [
@@ -359,16 +363,14 @@ export default function Map() {
       } as maplibregl.LineLayerSpecification,
       'address_label'
     )
-    // Highlight layers — initially hidden via impossible filter.
-    // Bright outline + light white overlay to mark the selection on any basemap.
+    // Highlight layers driven by a separate single-feature source — always visible,
+    // no filter needed. The source is set to empty when nothing is selected.
     map.addLayer(
       {
         id: 'tiles-highlight',
         type: 'fill',
-        source: 'tiles-status',
-        filter: ['==', false, true],
-        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.2 },
-        layout: { visibility: 'none' },
+        source: 'tiles-highlight-source',
+        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.25 },
       } as maplibregl.FillLayerSpecification,
       'address_label'
     )
@@ -376,21 +378,28 @@ export default function Map() {
       {
         id: 'tiles-highlight-outline',
         type: 'line',
-        source: 'tiles-status',
-        filter: ['==', false, true],
-        paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 1 },
-        layout: { visibility: 'none' },
+        source: 'tiles-highlight-source',
+        paint: { 'line-color': '#ffffff', 'line-width': 3 },
       } as maplibregl.LineLayerSpecification,
       'address_label'
     )
 
+    const clearHighlight = () => {
+      ;(map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource)
+        .setData({ type: 'FeatureCollection', features: [] })
+    }
+
     const tileClickHandler = (e: maplibregl.MapLayerMouseEvent) => {
-      const props = e.features?.[0]?.properties
-      if (!props) return
+      const feature = e.features?.[0]
+      if (!feature) return
+      const props = feature.properties as Record<string, unknown>
       // Derive status from land property when status field is absent (baseline GeoJSON).
       const status = (props.status as string) ??
         (props.land === false ? 'ocean' : 'unknown')
       setTileClickInfo({ ...props, status } as TileClickInfo)
+      // Populate the dedicated highlight source directly from the clicked feature.
+      ;(map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource)
+        .setData({ type: 'FeatureCollection', features: [feature] })
     }
     const cursorOn  = () => { map.getCanvas().style.cursor = 'pointer' }
     const cursorOff = () => { map.getCanvas().style.cursor = '' }
@@ -407,22 +416,17 @@ export default function Map() {
       map.off('mouseleave', 'tiles-fill', cursorOff)
       ;['tiles-highlight-outline', 'tiles-highlight', 'tiles-outline', 'tiles-fill']
         .forEach((id) => { try { map.removeLayer(id) } catch {} })
+      try { map.removeSource('tiles-highlight-source') } catch {}
       try { map.removeSource('tiles-status') } catch {}
       setTilesLoaded(false)
     }
   }, [mapLoaded])
 
-  // -- Highlight filter (update when selected tile changes) -----------------
+  // -- Clear highlight when tile selection is dismissed ---------------------
   useEffect(() => {
-    if (!mapRef.current || !tilesLoaded) return
-    const filter: maplibregl.FilterSpecification = tileClickInfo
-      ? ['all',
-          ['==', ['get', 'row'], tileClickInfo.row],
-          ['==', ['get', 'col'], tileClickInfo.col],
-        ]
-      : ['==', false, true]
-    mapRef.current.setFilter('tiles-highlight', filter)
-    mapRef.current.setFilter('tiles-highlight-outline', filter)
+    if (!mapRef.current || !tilesLoaded || tileClickInfo !== null) return
+    ;(mapRef.current.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource | undefined)
+      ?.setData({ type: 'FeatureCollection', features: [] })
   }, [tileClickInfo, tilesLoaded])
 
   // -- Satellite toggle ------------------------------------------------------
@@ -437,8 +441,9 @@ export default function Map() {
   useEffect(() => {
     if (!mapRef.current || !tilesLoaded) return
     const v = showTiles ? 'visible' : 'none'
-    ;['tiles-fill', 'tiles-outline', 'tiles-highlight', 'tiles-highlight-outline']
+    ;['tiles-fill', 'tiles-outline']
       .forEach((id) => mapRef.current!.setLayoutProperty(id, 'visibility', v))
+    // Clearing tileClickInfo triggers the clear-highlight effect above.
     if (!showTiles) setTileClickInfo(null)
   }, [tilesLoaded, showTiles])
 
