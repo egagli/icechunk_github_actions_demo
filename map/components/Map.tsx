@@ -640,8 +640,8 @@ export default function Map() {
         </div>
       </FloatingCard>
 
-      {/* ── Bottom-left: Overlay controls ── */}
-      <FloatingCard style={{ bottom: 16, left: 16, width: 240, maxHeight: '50vh', overflowY: 'auto' }}>
+      {/* ── Bottom-left: Overlay controls (sits to the right of the sidebar) ── */}
+      <FloatingCard style={{ bottom: 16, left: 276, width: 260, maxHeight: '50vh', overflowY: 'auto' }}>
         <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
           Processing grid &amp; tile status
         </button>
@@ -710,32 +710,40 @@ export default function Map() {
         )}
       </FloatingCard>
 
-      {/* ── Bottom-right: Inspect result ── */}
-      {clickInfo && (
-        <FloatingCard style={{ bottom: 16, right: 16, width: 210 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-            <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-              Inspect
-            </div>
+      {/* ── Bottom-right: Inspect result (always visible) ── */}
+      <FloatingCard style={{ bottom: 16, right: 16, width: 210 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+            Inspect
+          </div>
+          {clickInfo && (
             <button
               onClick={() => { setClickInfo(null); markerRef.current?.remove(); markerRef.current = null }}
               style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
               aria-label="Clear marker"
             >×</button>
+          )}
+        </div>
+        {clickInfo ? (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+              <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
+              <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+              {clickInfo.status === 'querying'
+                ? 'Querying…'
+                : clickInfo.valueC !== null
+                ? `${clickInfo.valueC.toFixed(1)} °C`
+                : 'No data'}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic' }}>
+            Select a point to inspect its value.
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-            <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
-            <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-            {clickInfo.status === 'querying'
-              ? 'Querying…'
-              : clickInfo.valueC !== null
-              ? `${clickInfo.valueC.toFixed(1)} °C`
-              : 'No data'}
-          </div>
-        </FloatingCard>
-      )}
+        )}
+      </FloatingCard>
     </div>
   )
 }
