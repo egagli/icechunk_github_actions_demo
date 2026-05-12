@@ -64,6 +64,54 @@ Check out [the interactive map](https://egagli.github.io/icechunk_github_actions
 
 ---
 
+## Processing in Practice
+
+The progression below shows the pipeline running end-to-end, visualized using
+notebook `02_processing_status.ipynb` which calls `get_processing_status_gdf`
+to query tile status directly from the Icechunk commit history.
+
+**1. Determining which tiles to process** — `generate_tile_matrix.py` queries
+unprocessed land tiles from the Icechunk history and outputs the job matrix:
+
+![Tile matrix generation — workflow logic for determining which tiles to process](https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b)
+
+**2. After initialization, before processing** — the store exists with metadata
+only; all land tiles are unprocessed:
+
+![Tile status after initialization — all land tiles unprocessed](https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a)
+
+**3. Mid-run** — the `Process All Tiles` workflow is in flight; tiles are being
+committed concurrently as runners finish:
+
+![Tile status mid-run — jobs committing concurrently as runners finish](https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422)
+
+**4. After first run** — nearly complete, with two tiles still unprocessed:
+
+![Tile status after first run — one tile remaining unprocessed](https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1)
+
+**5. After re-running** — the workflow is idempotent; it picks up only the
+remaining tiles and finishes:
+
+![Tile status after second run — all tiles processed](https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3)
+
+### Results
+
+| Stat | Value |
+| --- | --- |
+| Land tiles | 381 |
+| Processed | 376 |
+| No-data (no MODIS coverage) | 5 |
+| Unprocessed | 0 |
+| Total input data processed | 752.98 GB (250,992 granules from Planetary Computer) |
+| Output Zarr store size | 1.17 GB (5,188 objects in Azure Blob) |
+| GitHub Actions run time | ~40 minutes |
+
+The 752 GB reflects the total volume of raw MODIS granules downloaded and processed
+across all tiles and years. The 1.17 GB output is the resulting analytical store —
+annual mean and max summaries rather than the full 8-day time series.
+
+---
+
 ## How It Works
 
 ### Step 1: Initialize the store (notebook `01_initialize_and_setup.ipynb`)
@@ -273,57 +321,10 @@ ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False)
 lst_k = ds["avg_daytime_lst"].where(ds["avg_daytime_lst"] > 0)
 ```
 
----
-
-## Processing in Practice
-
-The progression below shows the pipeline running end-to-end, visualized using
-notebook `02_processing_status.ipynb` which calls `get_processing_status_gdf`
-to query tile status directly from the Icechunk commit history.
-
-**1. Determining which tiles to process** — `generate_tile_matrix.py` queries
-unprocessed land tiles from the Icechunk history and outputs the job matrix:
-
-![Tile matrix generation — workflow logic for determining which tiles to process](https://github.com/user-attachments/assets/3eecfd67-7f1a-4fb3-8eee-3871a5eccd5b)
-
-**2. After initialization, before processing** — the store exists with metadata
-only; all land tiles are unprocessed:
-
-![Tile status after initialization — all land tiles unprocessed](https://github.com/user-attachments/assets/44f15446-4e67-4348-b199-b4ff08bc055a)
-
-**3. Mid-run** — the `Process All Tiles` workflow is in flight; tiles are being
-committed concurrently as runners finish:
-
-![Tile status mid-run — jobs committing concurrently as runners finish](https://github.com/user-attachments/assets/02e2bdd3-6f77-4356-9380-ba10ba2e2422)
-
-**4. After first run** — nearly complete, with one tile still unprocessed:
-
-![Tile status after first run — one tile remaining unprocessed](https://github.com/user-attachments/assets/51c70095-2260-48c0-a653-cd845c3fa0d1)
-
-**5. After re-running** — the workflow is idempotent; it picks up only the
-remaining tiles and finishes:
-
-![Tile status after second run — all tiles processed](https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3)
-
-### Results
-
-| Stat | Value |
-| --- | --- |
-| Land tiles | 381 |
-| Processed | 376 |
-| No-data (no MODIS coverage) | 5 |
-| Unprocessed | 0 |
-| Total input data processed | 752.98 GB (250,992 granules from Planetary Computer) |
-| Output Zarr store size | 1.17 GB (5,188 objects in Azure Blob) |
-| GitHub Actions run time | ~40 minutes |
-
-The 752 GB reflects the total volume of raw MODIS granules downloaded and processed
-across all tiles and years. The 1.17 GB output is the resulting analytical store —
-annual mean and max summaries rather than the full 8-day time series.
 
 ---
 
-## Quick Start
+## Quick Start - try it on your own!
 
 ### 1. Fork and clone this repository
 
