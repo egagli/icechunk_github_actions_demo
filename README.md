@@ -83,6 +83,20 @@ Looks like on tile remains unprocessed, let's run the process all tiles github a
 <img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/77cb2a3b-9a24-45cd-8468-7beb195999d3" />  
 All tiles processed!!
 
+
+Some stats.....
+Land tiles:   381
+Processed:    376
+No-data:      5
+Unprocessed:  0
+Progress:     100.0%
+
+Total input data volume: 752.98 GB (250992 granules)  
+Total data volume of output Zarr store: 1.17 GB (5,188 objects)  
+Github actions run time: ~40 minutes
+
+
+
 ---
 
 ## Quick Start
