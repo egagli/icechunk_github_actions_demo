@@ -23,18 +23,31 @@ def _is_antimeridian_tile(bbox):
     return bbox.right >= 179.999 or bbox.left <= -179.999
 
 
-def _utm_crs_for_tile(bbox):
-    """Return a UTM CRS whose central meridian keeps ±180° away from any edge.
+# Custom Transverse Mercator centred at exactly 180° — used for both col 0 and col 35.
+# lon_0=180 places the antimeridian at the projection centre so _relative_rois never
+# encounters a ±180° discontinuity; both tiles are 0–10° from the central meridian.
+_TMERC_180_N = (
+    "+proj=tmerc +lat_0=0 +lon_0=180 +k=0.9996 "
+    "+x_0=500000 +y_0=0 +datum=WGS84 +units=m +no_defs"
+)
+_TMERC_180_S = (
+    "+proj=tmerc +lat_0=0 +lon_0=180 +k=0.9996 "
+    "+x_0=500000 +y_0=10000000 +datum=WGS84 +units=m +no_defs"
+)
 
-    col 35 (lon 170-180°E): UTM Zone 60N/S centred at 177°E
-    col  0 (lon -180–-170°): UTM Zone 1N/S  centred at 177°W
-    N/S variant chosen by tile centre latitude so coordinates stay in the
-    standard positive-northing range for that hemisphere.
+
+def _utm_crs_for_tile(bbox):
+    """Return a CRS centred at 180° for antimeridian tiles (col 0 and col 35).
+
+    Using UTM Zone 60N (177°E) for col 35 and Zone 1N (177°W) for col 0 leaves
+    each zone's boundary at exactly ±180°, 3° from the tile edge.  MODIS tiles
+    near the antimeridian can project to UTM coordinates that don't overlap the
+    output geobox for the opposite column, leaving a nodata strip.  Centring at
+    exactly 180° puts both columns 0–10° from the projection centre, eliminating
+    that coverage gap.
     """
     south = (bbox.top + bbox.bottom) / 2 < 0
-    if bbox.right >= 179.999:
-        return "EPSG:32760" if south else "EPSG:32660"
-    return "EPSG:32701" if south else "EPSG:32601"
+    return _TMERC_180_S if south else _TMERC_180_N
 
 
 def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
@@ -93,6 +106,7 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
             bands=["LST_Day_1km", "QC_Day"],
             crs=utm_crs,
             resolution=1000,  # native MODIS ~1 km in metres
+            bbox=[bbox.left, bbox.bottom, bbox.right, bbox.top],
             chunks={"time": 1},
         )
         good = (ds.QC_Day & 0b11) <= 1
