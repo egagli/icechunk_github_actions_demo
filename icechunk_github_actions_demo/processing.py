@@ -100,7 +100,12 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
             bands=["LST_Day_1km", "QC_Day"],
             crs=proj_crs,
             resolution=1000,  # native MODIS ~1 km in metres
-            bbox=[bbox.left - 1, bbox.bottom - 1, bbox.right + 1, bbox.top + 1],
+            bbox=[
+                bbox.left - 1,
+                max(bbox.bottom - 1, -90.0),
+                bbox.right + 1,
+                min(bbox.top + 1, 90.0),
+            ],
             chunks={"time": 1},
         )
         good = (ds.QC_Day & 0b11) <= 1
