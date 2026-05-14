@@ -23,31 +23,22 @@ def _is_antimeridian_tile(bbox):
     return bbox.right >= 179.999 or bbox.left <= -179.999
 
 
-# Custom Transverse Mercator centred at exactly 180° — used for both col 0 and col 35.
-# lon_0=180 places the antimeridian at the projection centre so _relative_rois never
-# encounters a ±180° discontinuity; both tiles are 0–10° from the central meridian.
-_TMERC_180_N = (
-    "+proj=tmerc +lat_0=0 +lon_0=180 +k=0.9996 "
-    "+x_0=500000 +y_0=0 +datum=WGS84 +units=m +no_defs"
-)
-_TMERC_180_S = (
-    "+proj=tmerc +lat_0=0 +lon_0=180 +k=0.9996 "
-    "+x_0=500000 +y_0=10000000 +datum=WGS84 +units=m +no_defs"
-)
+def _crs_for_antimeridian_tile(bbox):
+    """Lambert Azimuthal Equal Area centred on the tile centroid.
 
-
-def _utm_crs_for_tile(bbox):
-    """Return a CRS centred at 180° for antimeridian tiles (col 0 and col 35).
-
-    Using UTM Zone 60N (177°E) for col 35 and Zone 1N (177°W) for col 0 leaves
-    each zone's boundary at exactly ±180°, 3° from the tile edge.  MODIS tiles
-    near the antimeridian can project to UTM coordinates that don't overlap the
-    output geobox for the opposite column, leaving a nodata strip.  Centring at
-    exactly 180° puts both columns 0–10° from the projection centre, eliminating
-    that coverage gap.
+    Centering at the tile centroid (e.g. 175°E for col 35, −175° for col 0)
+    keeps the antimeridian 5° inside the projection rather than at its origin,
+    avoiding the boundary-coincidence edge effect that arose when TM centred at
+    exactly 180° mapped STAC item bbox edges and the output geobox edge to the
+    same floating-point x value.  Works for any antimeridian tile in any
+    hemisphere without hemisphere branching.
     """
-    south = (bbox.top + bbox.bottom) / 2 < 0
-    return _TMERC_180_S if south else _TMERC_180_N
+    lon0 = (bbox.left + bbox.right) / 2
+    lat0 = (bbox.bottom + bbox.top) / 2
+    return (
+        f"+proj=laea +lat_0={lat0:.4f} +lon_0={lon0:.4f} "
+        "+datum=WGS84 +units=m +no_defs"
+    )
 
 
 def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
@@ -92,21 +83,24 @@ def fetch_annual_lst(tile_geobox, year, pixels_per_tile):
     if _is_antimeridian_tile(bbox):
         # Workaround for odc-geo#176: _relative_rois miscomputes pixel overlap
         # near ±180° during sinusoidal→EPSG:4326 transform, dropping granules.
-        # Load into UTM (antimeridian away from tile centre), apply QC+scale,
-        # compute the full time stack, then reproject only the 2D mean/max to
-        # the EPSG:4326 grid.  Reprojecting the full dask time-stack triggers a
-        # separate bug in dask_rio_reproject (GeoboxTiles.grid_intersect fails
-        # to close a LinearRing for large UTM footprints).
-        utm_crs = _utm_crs_for_tile(bbox)
+        # Load into LAEA centred on the tile centroid (antimeridian 5° from
+        # projection centre), apply QC+scale, compute the full time stack, then
+        # reproject only the 2D mean/max to the EPSG:4326 grid.  Reprojecting
+        # the full dask time-stack triggers a separate bug in dask_rio_reproject
+        # (GeoboxTiles.grid_intersect fails to close a LinearRing for large
+        # projected footprints).  bbox expanded ±1° so STAC item geometry edges
+        # (capped at ±180°) fall strictly inside the output geobox, avoiding a
+        # floating-point boundary-coincidence that dropped the last pixel column.
+        proj_crs = _crs_for_antimeridian_tile(bbox)
         logger.info(
-            f"  [{year}] Antimeridian tile — loading via {utm_crs}"
+            f"  [{year}] Antimeridian tile — loading via {proj_crs}"
         )
         ds = odc.stac.load(
             items,
             bands=["LST_Day_1km", "QC_Day"],
-            crs=utm_crs,
+            crs=proj_crs,
             resolution=1000,  # native MODIS ~1 km in metres
-            bbox=[bbox.left, bbox.bottom, bbox.right, bbox.top],
+            bbox=[bbox.left - 1, bbox.bottom - 1, bbox.right + 1, bbox.top + 1],
             chunks={"time": 1},
         )
         good = (ds.QC_Day & 0b11) <= 1
