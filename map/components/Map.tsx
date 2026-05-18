@@ -231,6 +231,31 @@ export default function Map() {
       zoom: 2,
       attributionControl: false,
     })
+
+    // MapLibre Globe mode clamps getBounds() longitude to [-180, 180], so views
+    // crossing the antimeridian return a truncated east/west bound. zarr-layer
+    // needs extended coords to fetch tiles on both sides. Mercator mode already
+    // returns extended coords (renderWorldCopies), so this patch is a no-op there.
+    const origGetBounds = map.getBounds.bind(map)
+    ;(map as unknown as Record<string, unknown>).getBounds = function () {
+      const b = origGetBounds()
+      if (!b) return b
+      const center = map.getCenter()
+      const west = b.getWest()
+      const east = b.getEast()
+      // With bearing=0 the view is longitudinally symmetric around center.
+      // The unclipped side has the larger half-span; use it to correct the other.
+      const halfLonSpan = Math.max(center.lng - west, east - center.lng)
+      const correctedWest = center.lng - halfLonSpan
+      const correctedEast = center.lng + halfLonSpan
+      if (correctedWest < west - 0.01 || correctedEast > east + 0.01) {
+        return new maplibregl.LngLatBounds(
+          [correctedWest, b.getSouth()],
+          [correctedEast, b.getNorth()]
+        )
+      }
+      return b
+    }
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
 
     map.on('styleimagemissing', () => {})
