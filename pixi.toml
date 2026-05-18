@@ -30,3 +30,6 @@ matplotlib = "*"
 [environments]
 default = { features = ["dev"] }
 ci = { solve-group = "default" }
+
+[tasks.setup-kernel] # this is just for my cryocloud setup. run pixi setup-kernel after pixi install to setup kernel and proj
+cmd = "python ~/setup_kernel.py"
