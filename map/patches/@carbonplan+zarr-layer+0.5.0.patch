@@ -1,0 +1,58 @@
+diff --git a/node_modules/@carbonplan/zarr-layer/dist/index.js b/node_modules/@carbonplan/zarr-layer/dist/index.js
+index f2de1db..1a9a141 100644
+--- a/node_modules/@carbonplan/zarr-layer/dist/index.js
++++ b/node_modules/@carbonplan/zarr-layer/dist/index.js
+@@ -6090,20 +6090,46 @@ var UntiledMode = class {
+       ySouthIdx = height - 1 - ySouthIdx;
+       yNorthIdx = height - 1 - yNorthIdx;
+     }
+-    const regionXMin = Math.floor(Math.min(xMinIdx, xMaxIdx) / regionW);
+-    const regionXMax = Math.floor(Math.max(xMinIdx, xMaxIdx) / regionW);
+     const regionYMin = Math.floor(Math.min(ySouthIdx, yNorthIdx) / regionH);
+     const regionYMax = Math.floor(Math.max(ySouthIdx, yNorthIdx) / regionH);
+     const numRegionsX = Math.ceil(width / regionW);
+     const numRegionsY = Math.ceil(height / regionH);
+-    const clampedXMin = Math.max(0, regionXMin);
+-    const clampedXMax = Math.min(numRegionsX - 1, regionXMax);
+     const clampedYMin = Math.max(0, regionYMin);
+     const clampedYMax = Math.min(numRegionsY - 1, regionYMax);
+     const regions = [];
+-    for (let ry = clampedYMin; ry <= clampedYMax; ry++) {
+-      for (let rx = clampedXMin; rx <= clampedXMax; rx++) {
+-        regions.push({ regionX: rx, regionY: ry });
++    if (east > xMax || west < xMin) {
++      // Antimeridian crossing: geoToArrayIndex clamps extended east/west to dataset edges,
++      // causing the opposite side's regions to be skipped. Fetch the two narrow strips
++      // on each side separately so we don't load the entire longitudinal extent.
++      if (east > xMax) {
++        // Asia strip: from west up to the right dataset edge
++        const asiaXMin = Math.max(0, Math.floor(xMinIdx / regionW));
++        // Alaska strip: from the left dataset edge up to the wrapped east longitude
++        const wrappedEastIdx = geoToArrayIndex(east - (xMax - xMin), xMin, xMax, width);
++        const alaskaXMax = Math.min(numRegionsX - 1, Math.floor(wrappedEastIdx / regionW));
++        for (let ry = clampedYMin; ry <= clampedYMax; ry++) {
++          for (let rx = asiaXMin; rx < numRegionsX; rx++) regions.push({ regionX: rx, regionY: ry });
++          for (let rx = 0; rx <= alaskaXMax; rx++) regions.push({ regionX: rx, regionY: ry });
++        }
++      } else {
++        // Symmetric case: west extends past the left dataset edge
++        const wrappedWestIdx = geoToArrayIndex(west + (xMax - xMin), xMin, xMax, width);
++        const asiaXMin = Math.max(0, Math.floor(wrappedWestIdx / regionW));
++        const alaskaXMax = Math.min(numRegionsX - 1, Math.floor(xMaxIdx / regionW));
++        for (let ry = clampedYMin; ry <= clampedYMax; ry++) {
++          for (let rx = asiaXMin; rx < numRegionsX; rx++) regions.push({ regionX: rx, regionY: ry });
++          for (let rx = 0; rx <= alaskaXMax; rx++) regions.push({ regionX: rx, regionY: ry });
++        }
++      }
++    } else {
++      const regionXMin = Math.floor(Math.min(xMinIdx, xMaxIdx) / regionW);
++      const regionXMax = Math.floor(Math.max(xMinIdx, xMaxIdx) / regionW);
++      const clampedXMin = Math.max(0, regionXMin);
++      const clampedXMax = Math.min(numRegionsX - 1, regionXMax);
++      for (let ry = clampedYMin; ry <= clampedYMax; ry++) {
++        for (let rx = clampedXMin; rx <= clampedXMax; rx++) {
++          regions.push({ regionX: rx, regionY: ry });
++        }
+       }
+     }
+     return regions;
