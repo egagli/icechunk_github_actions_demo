@@ -4,6 +4,7 @@ import { Protocol } from 'pmtiles'
 import { layers, namedFlavor } from '@protomaps/basemaps'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import { makeColormap } from '@carbonplan/colormaps'
+import { track } from './analytics'
 
 // ---------------------------------------------------------------------------
 // Store configuration
@@ -291,6 +292,7 @@ export default function Map() {
         .setLngLat([lng, lat])
         .addTo(map)
       setClickInfo({ lng, lat, status: 'querying', valueC: null })
+      track('map_point_query')
       const result = await layer.queryData({ type: 'Point', coordinates: [lng, lat] })
       const vals = result?.[variable]
       const rawC = Array.isArray(vals) ? vals[0] : null
@@ -399,6 +401,7 @@ export default function Map() {
       const status = (props.status as string) ??
         (props.land === false ? 'ocean' : 'unknown')
       setTileClickInfo({ ...props, status } as TileClickInfo)
+      track('map_tile_query', { status })
       const hlSrc = map.getSource('tiles-highlight-source') as maplibregl.GeoJSONSource | undefined
       hlSrc?.setData({
         type: 'FeatureCollection',
@@ -454,6 +457,7 @@ export default function Map() {
   // -- Variable change -------------------------------------------------------
   const handleVariableChange = (v: Variable) => {
     const cfg = VARIABLE_CONFIGS[v]
+    if (v !== variable) track('map_layer_change', { layer: v })
     setVariable(v)
     setColormap(cfg.defaultColormap)
     setClim(cfg.defaultClim)
@@ -549,7 +553,7 @@ export default function Map() {
               {YEARS.map((y) => (
                 <button
                   key={y}
-                  onClick={() => setYear(y)}
+                  onClick={() => { if (y !== year) track('map_time_change', { year: y }); setYear(y) }}
                   style={{ ...chipStyle(y === year), flex: 1, textAlign: 'center' }}
                 >
                   {y}
@@ -617,7 +621,10 @@ export default function Map() {
             {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
               <button
                 key={String(opt.value)}
-                onClick={() => setShowSatellite(opt.value)}
+                onClick={() => {
+                  if (opt.value !== showSatellite) track('map_basemap_change', { basemap: opt.value ? 'satellite' : 'dark' })
+                  setShowSatellite(opt.value)
+                }}
                 style={{ ...chipStyle(showSatellite === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
               >
                 {opt.label}
@@ -644,7 +651,10 @@ export default function Map() {
 
       {/* ── Top-right: Overlay controls (below Basemap+Projection card) ── */}
       <FloatingCard style={{ top: 162, right: 16, width: 260, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
-        <button onClick={() => setShowTiles((p) => !p)} style={chipStyle(showTiles)}>
+        <button
+          onClick={() => { track('map_tile_status_toggle', { visible: !showTiles }); setShowTiles((p) => !p) }}
+          style={chipStyle(showTiles)}
+        >
           Processing grid &amp; tile status
         </button>
 
