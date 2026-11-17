@@ -1,0 +1,110 @@
+/* Phones, tablets and landscape phones: one bottom sheet (components/BottomSheet.tsx), the layout shared
+   by every map on egagli.github.io. Heights come from the component as --sheet-full / --sheet-vis (px).
+   The controls inside are the desktop ones, styled inline, so the touch sizes below need !important. */
+
+.m-sheet {
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ic-panel: #16191e; --ic-card: #1a1d22; --ic-field: #1e2128; --ic-accent: #1dbd8f; --ic-border: #2e3138;
+  --ic-text: #d0d0d0;
+  --ic-dim: #9aa1ac;   /* the desktop DIM #6b7280 is 3.6:1 on the panel; this is 6.6:1 */
+  position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; height: var(--sheet-full);
+  display: flex; flex-direction: column; box-sizing: border-box;
+  color: var(--ic-text); font: 14px/1.4 system-ui, -apple-system, sans-serif;
+  background: var(--ic-panel); border: 1px solid var(--ic-border); border-bottom: 0; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, .25);
+  transform: translateY(calc(var(--sheet-full) - var(--sheet-vis)));
+  transition: transform 220ms var(--ease);
+}
+.m-sheet *, .m-sheet *::before, .m-sheet *::after { box-sizing: border-box; }
+.m-sheet.m-dragging { transition: none; }
+
+/* Header: pill, title, chevron. The whole header is the handle (tap cycles, drag snaps). */
+.m-head {
+  position: relative; flex: none; display: flex; align-items: center; gap: 4px; min-height: 44px;
+  padding: 12px 4px 0 max(16px, env(safe-area-inset-left)); cursor: grab; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 16px 16px 0 0;
+}
+.m-head:focus-visible, .m-chev:focus-visible { outline: 2px solid var(--ic-accent); outline-offset: -2px; }
+.m-pill { position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #4b5059; }
+.m-title { flex: 1; min-width: 0; font-size: 17px; font-weight: 600; line-height: 22px; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-chev { flex: none; width: 44px; height: 44px; margin: -8px 0; padding: 0; border: 0; border-radius: 22px; background: none;
+  color: var(--ic-dim); display: grid; place-items: center; cursor: pointer; }
+.m-chev svg { transition: transform 220ms var(--ease); }
+.m-sheet[data-state='full'] .m-chev svg { transform: rotate(180deg); }
+
+.m-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 6px max(16px, env(safe-area-inset-right)) calc(var(--sheet-full) - var(--sheet-vis) + 16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.m-sheet[data-state='peek'] .m-body { overflow: hidden; }
+
+/* Peek: [Avg | Max] [2020 | 2021 | 2022], then the colour bar. */
+.m-peek { display: flex; flex-direction: column; gap: 6px; }
+.m-peek > .m-colorbar-labels { margin-top: -4px; }
+.m-segrow { display: grid; grid-template-columns: 2fr 3fr; gap: 8px; }
+.m-seg { display: flex; min-width: 0; }
+.m-seg button {
+  flex: 1; min-width: 0; min-height: 44px; margin: 0; padding: 0 8px; font: 14px system-ui, -apple-system, sans-serif;
+  color: var(--ic-text); background: transparent; border: 1px solid var(--ic-border); border-radius: 0; cursor: pointer; white-space: nowrap;
+}
+.m-seg button + button { margin-left: -1px; }
+.m-seg button:first-child { border-radius: 10px 0 0 10px; }
+.m-seg button:last-child { border-radius: 0 10px 10px 0; }
+.m-seg button.on { background: var(--ic-accent); border-color: var(--ic-accent); color: #000; font-weight: 700; position: relative; }
+.m-seg button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; position: relative; z-index: 1; }
+.m-colorbar { height: 12px; border-radius: 4px; margin-top: 2px; }
+.m-colorbar-labels { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 16px; margin-top: -2px; }
+.m-colorbar-labels span:nth-child(2) { color: var(--ic-dim); text-align: center; }
+
+/* Cards and sections inside the sheet */
+.m-card { background: var(--ic-card); border: 1px solid var(--ic-border); border-radius: 12px; padding: 12px 16px; }
+.m-colormap > div > div:nth-of-type(2), .m-colormap > div > div:nth-of-type(3) { display: none; }   /* its bar is in the peek */
+.m-about { font-size: 13px; line-height: 1.55; color: var(--ic-dim); border-top: 1px solid var(--ic-border); padding-top: 16px; }
+.m-about a[href*='github.com'] { display: inline-block; padding: 12px 0 4px; }
+.m-body .m-section-label { font-size: 12px !important; color: var(--ic-dim) !important; }
+.m-body div[style*='color: rgb(107, 114, 128)'], .m-body span[style*='color: rgb(107, 114, 128)'] { color: var(--ic-dim) !important; }
+.m-body div[style*='font-size: 10px'], .m-body div[style*='font-size: 11px'], .m-body span[style*='font-size: 11px'] { font-size: 12px !important; }
+.m-body div[style*='font-size: 12px'] { font-size: 13px !important; }
+
+/* Touch sizes: 44 px targets, 16 px fields (no iOS zoom on focus) */
+.m-body button { min-height: 44px; font-size: 14px !important; }
+.m-body button[aria-label^='Clear'] { min-width: 44px; margin: -12px -12px -12px 0 !important; font-size: 22px !important; }
+.m-body select, .m-body input[type='number'] { font-size: 16px !important; min-height: 44px; border-radius: 10px !important; }
+.m-body input[type='number'] { width: 76px !important; }
+.m-body input[type='range'] { height: 44px; margin: 0; }
+
+/* Tablet portrait: a floating sheet, at most 600 px, centred, 12 px gaps, all corners rounded. */
+.m-sheet.m-tablet, .m-sheet.m-land {
+  bottom: 12px; height: var(--sheet-vis); transform: none; transition: height 220ms var(--ease); overflow: hidden;
+  border-radius: 16px; border-bottom: 1px solid var(--ic-border);
+}
+.m-sheet.m-tablet { left: 12px; right: 12px; max-width: 600px; margin: 0 auto; }
+/* Landscape phone: docked on the left, peek and full. */
+.m-sheet.m-land { left: 12px; right: auto; width: min(380px, 50%); }
+.m-sheet.m-tablet .m-body, .m-sheet.m-land .m-body { padding-bottom: 16px; }
+.m-sheet.m-dragging { transition: none; }
+
+/* "Loading chunks…" as a chip on the map */
+.m-loading { position: absolute; z-index: 12; top: max(12px, env(safe-area-inset-top)); left: 12px; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 999px; background: rgba(22, 25, 30, .92); border: 1px solid #2e3138;
+  font: 13px system-ui, -apple-system, sans-serif; color: #d0d0d0; }
+.m-loading i { width: 8px; height: 8px; border-radius: 50%; background: #1dbd8f; }
+
+/* Map controls on phones and tablets: the (i) bottom-right, 12 px above the sheet */
+@media (max-width: 1023px), (pointer: coarse) and (max-height: 520px) {
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  .maplibregl-ctrl-bottom-right { bottom: var(--m-cover, 0px); transition: bottom 220ms cubic-bezier(.2, .8, .2, 1); }
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 12px 12px 0; }
+  .maplibregl-ctrl-attrib.maplibregl-compact { box-sizing: border-box; min-height: 44px; min-width: 44px; padding: 0; background: none; }
+  .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button { width: 44px; height: 44px; top: 0; right: 0; left: auto; padding: 7px;
+    background-color: #fff; background-clip: content-box; background-origin: content-box; background-repeat: no-repeat;
+    background-position: center; background-size: 20px; border-radius: 22px; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .35)); }
+  .maplibregl-ctrl-attrib.maplibregl-compact-show { padding: 12px 48px 12px 12px; border-radius: 12px; font-size: 12px;
+    max-width: calc(100vw - 24px); background: #fff; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-sheet, .m-chev svg, .maplibregl-ctrl-bottom-right { transition: none !important; }
+}

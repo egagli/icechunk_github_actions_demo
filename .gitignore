@@ -10,3 +10,6 @@ __pycache__/
 map/node_modules/
 map/.next/
 map/out/
+map/tsconfig.tsbuildinfo
+map/out/
+map/.next/

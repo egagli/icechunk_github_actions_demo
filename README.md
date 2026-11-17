@@ -29,6 +29,9 @@ built with [zarr-layer](https://github.com/carbonplan/zarr-layer) (CarbonPlan's 
 rendering Zarr data as map tiles), Next.js, and deployed automatically to GitHub Pages via
 `deploy-map.yml`. The map shows both tile processing status and the actual LST values
 rendered directly from the Zarr store. Source lives in [`map/`](map/).
+On phones and tablets (below 1024 px, and phones in landscape) the controls move into one bottom
+sheet (`map/components/BottomSheet.tsx`, `map/styles/sheet.css`) with Variable, Year and the colour bar
+always in view, the same layout as the other maps on [egagli.github.io](https://egagli.github.io).
 
 <img width="1613" height="994" alt="image" src="https://github.com/user-attachments/assets/f0d43fa1-adb5-4703-bd9e-692066737830" />   
 

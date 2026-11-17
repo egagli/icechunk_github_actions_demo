@@ -5,6 +5,7 @@ import { layers, namedFlavor } from '@protomaps/basemaps'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import { makeColormap } from '@carbonplan/colormaps'
 import { track } from './analytics'
+import BottomSheet, { SHEET_QUERY, SheetCover, SheetState, useMediaQuery } from './BottomSheet'
 
 // ---------------------------------------------------------------------------
 // Store configuration
@@ -185,6 +186,15 @@ export default function Map() {
   const [clickInfo, setClickInfo] = useState<ClickInfo | null>(null)
   const [tileClickInfo, setTileClickInfo] = useState<TileClickInfo | null>(null)
 
+  // Phones and tablets: bottom sheet (BottomSheet.tsx); the map is padded for the part it covers.
+  const isSheet = useMediaQuery(SHEET_QUERY)
+  const isSheetRef = useRef(false)
+  isSheetRef.current = isSheet
+  const [sheetState, setSheetState] = useState<SheetState>('peek')
+  const [sheetCover, setSheetCover] = useState<SheetCover>({ bottom: 0, left: 0 })
+  const [pointSeq, setPointSeq] = useState(0)   // bumps on each map click in the sheet layout
+  const attribRef = useRef<maplibregl.AttributionControl | null>(null)
+
   const colormapArray = useMemo(
     () => makeColormap(colormap, { format: 'hex' }),
     [colormap]
@@ -233,7 +243,8 @@ export default function Map() {
       attributionControl: false,
     })
 
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
+    attribRef.current = new maplibregl.AttributionControl({ compact: true })
+    map.addControl(attribRef.current, 'bottom-left')
 
     map.on('styleimagemissing', () => {})
     mapRef.current = map
@@ -292,6 +303,10 @@ export default function Map() {
         .setLngLat([lng, lat])
         .addTo(map)
       setClickInfo({ lng, lat, status: 'querying', valueC: null })
+      if (isSheetRef.current) {
+        setSheetState((s) => (s === 'peek' ? 'half' : s))
+        setPointSeq((n) => n + 1)
+      }
       track('map_point_query')
       const result = await layer.queryData({ type: 'Point', coordinates: [lng, lat] })
       const vals = result?.[variable]
@@ -454,6 +469,46 @@ export default function Map() {
     if (!showTiles) setTileClickInfo(null)
   }, [tilesLoaded, showTiles])
 
+  // -- Bottom sheet: map padding, a tapped point kept in view, attribution ---
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+    const padding = isSheet
+      ? { top: 0, right: 0, bottom: sheetCover.bottom, left: sheetCover.left }
+      : { top: 0, right: 0, bottom: 0, left: 0 }
+    // If the inspected point would sit under the sheet, centre it in the visible map.
+    const at = isSheet ? markerRef.current?.getLngLat() : undefined
+    let center: [number, number] | undefined
+    if (at) {
+      const pt = map.project(at)
+      const box = map.getContainer().getBoundingClientRect()
+      if (pt.y > box.height - padding.bottom - 24 || pt.x < padding.left + 24) center = [at.lng, at.lat]
+    }
+    // The (i) attribution rides 12 px above the sheet (styles/sheet.css).
+    document.documentElement.style.setProperty('--m-cover', `${padding.bottom}px`)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    map.easeTo({ padding, ...(center ? { center } : {}), duration: reduce ? 0 : 220 })
+  }, [isSheet, sheetCover, mapLoaded, pointSeq])
+
+  // A picked grid tile is an inspection too: open the sheet to half.
+  useEffect(() => {
+    if (isSheet && tileClickInfo) setSheetState((s) => (s === 'peek' ? 'half' : s))
+  }, [isSheet, tileClickInfo])
+
+  // The compact (i) sits bottom-right above the sheet on phones and tablets, collapsed until tapped.
+  useEffect(() => {
+    const map = mapRef.current
+    const attrib = attribRef.current
+    if (!map || !mapLoaded || !attrib) return
+    map.removeControl(attrib)
+    map.addControl(attrib, isSheet ? 'bottom-right' : 'bottom-left')
+    if (isSheet) {
+      const el = map.getContainer().querySelector('.maplibregl-ctrl-attrib')
+      el?.classList.remove('maplibregl-compact-show')
+      el?.removeAttribute('open')
+    }
+  }, [isSheet, mapLoaded])
+
   // -- Variable change -------------------------------------------------------
   const handleVariableChange = (v: Variable) => {
     const cfg = VARIABLE_CONFIGS[v]
@@ -484,6 +539,247 @@ export default function Map() {
   // -- Render ---------------------------------------------------------------
   const climMid = (clim[0] + clim[1]) / 2
 
+  // Each control is defined once and rendered either in the desktop sidebar and cards, or in the
+  // bottom sheet on phones and tablets (BottomSheet.tsx).
+  const title = 'MODIS Land Surface Temperature'
+  const aboutText = (
+    <>
+      Demo: GitHub Actions as free parallel compute +{' '}
+      <a href="https://icechunk.io" target="_blank" rel="noopener noreferrer" style={{ color: ACCENT, textDecoration: 'none' }}>Icechunk</a>
+      {' '}as a versioned Zarr v3 store.
+      376 tiles written concurrently with zero conflicts.
+      <br />
+      NASA MODIS MYD11C3 v6.1 · 0.01° (~1 km) · annual mean &amp; max · 2020–2022
+      <br />
+      <a
+        href="https://github.com/egagli/icechunk_github_actions_demo"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: ACCENT, textDecoration: 'none' }}
+      >
+        egagli/icechunk_github_actions_demo ↗
+      </a>
+    </>
+  )
+  const variableSection = (
+    <Section label="Variable">
+      {(Object.keys(VARIABLE_CONFIGS) as Variable[]).map((v) => (
+        <button key={v} onClick={() => handleVariableChange(v)} style={chipStyle(v === variable)}>
+          {VARIABLE_CONFIGS[v].label}
+        </button>
+      ))}
+    </Section>
+  )
+  const yearSection = (
+    <Section label="Year">
+      <div style={{ display: 'flex', gap: 6 }}>
+        {YEARS.map((y) => (
+          <button
+            key={y}
+            onClick={() => { if (y !== year) track('map_time_change', { year: y }); setYear(y) }}
+            style={{ ...chipStyle(y === year), flex: 1, textAlign: 'center' }}
+          >
+            {y}
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+  const colormapSection = (
+    <Section label="Colormap">
+      <select
+        value={colormap}
+        onChange={(e) => setColormap(e.target.value)}
+        style={{
+          width: '100%', padding: '6px 8px', borderRadius: 4,
+          background: '#1e2128', color: TEXT, border: `1px solid ${BORDER}`,
+          fontSize: 13, cursor: 'pointer',
+        }}
+      >
+        {COLORMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <div style={{ height: 10, borderRadius: 3, marginTop: 8, background: gradient }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 11, color: DIM }}>
+        <span>{clim[0]}°</span>
+        <span>{climMid.toFixed(0)}°</span>
+        <span>{clim[1]}°</span>
+      </div>
+    </Section>
+  )
+  const rangeSection = (
+    <Section label="Range (°C)">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="number" value={climInputs[0]}
+          onChange={(e) => handleClimInputChange(0, e.target.value)}
+          onBlur={() => commitClimInput(0)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitClimInput(0) }}
+          style={numInputStyle}
+        />
+        <div style={{ flex: 1, height: 6, borderRadius: 3, background: gradient }} />
+        <input
+          type="number" value={climInputs[1]}
+          onChange={(e) => handleClimInputChange(1, e.target.value)}
+          onBlur={() => commitClimInput(1)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitClimInput(1) }}
+          style={numInputStyle}
+        />
+      </div>
+    </Section>
+  )
+  const opacitySection = (
+    <Section label={`Opacity — ${Math.round(opacity * 100)}%`}>
+      <input
+        type="range" min={0} max={1} step={0.01} value={opacity}
+        onChange={(e) => setOpacity(Number(e.target.value))}
+        style={{ width: '100%', accentColor: ACCENT, cursor: 'pointer' }}
+      />
+    </Section>
+  )
+  const basemapContent = (
+    <>
+    <Section label="Basemap">
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
+          <button
+            key={String(opt.value)}
+            onClick={() => {
+              if (opt.value !== showSatellite) track('map_basemap_change', { basemap: opt.value ? 'satellite' : 'dark' })
+              setShowSatellite(opt.value)
+            }}
+            style={{ ...chipStyle(showSatellite === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </Section>
+    <div style={{ marginTop: 14 }}>
+      <Section label="Projection">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[{ label: 'Globe', value: true }, { label: 'Mercator', value: false }].map((opt) => (
+            <button
+              key={String(opt.value)}
+              onClick={() => setGlobeProjection(opt.value)}
+              style={{ ...chipStyle(globeProjection === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </Section>
+    </div>
+    </>
+  )
+  const overlayContent = (
+    <>
+    <button
+      onClick={() => { track('map_tile_status_toggle', { visible: !showTiles }); setShowTiles((p) => !p) }}
+      style={chipStyle(showTiles)}
+    >
+      Processing grid &amp; tile status
+    </button>
+
+    {showTiles && (
+      <>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8,
+          padding: '8px 10px', background: '#1e2128', borderRadius: 4, border: `1px solid ${BORDER}`,
+        }}>
+          {Object.entries(TILE_STATUS_META).map(([, { color, label }]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: DIM }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {tileClickInfo ? (
+          <div style={{
+            marginTop: 8, padding: '14px', background: '#1e2128',
+            borderRadius: 6, border: `1px solid ${BORDER}`,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: 2, flexShrink: 0,
+                  background: TILE_STATUS_META[tileClickInfo.status]?.color ?? TILE_COLOR_UNKNOWN,
+                }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                  {TILE_STATUS_META[tileClickInfo.status]?.label ?? tileClickInfo.status}
+                </span>
+              </div>
+              <button
+                onClick={() => setTileClickInfo(null)}
+                style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+                aria-label="Clear tile selection"
+              >×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+              {(['row', 'col'] as const).map((k) => (
+                <div key={k}>
+                  <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                    {k}
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+                    {String(tileClickInfo[k])}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {Object.entries(tileClickInfo)
+                .filter(([k]) => !['row', 'col', 'status'].includes(k))
+                .map(([k, v]) => (
+                  <CoordRow key={k} label={propLabel(k)} value={formatPropValue(v)} />
+                ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic', marginTop: 8 }}>
+            Click a tile to inspect its status.
+          </div>
+        )}
+      </>
+    )}
+    </>
+  )
+  const inspectContent = (
+    <>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+        Inspect
+      </div>
+      {clickInfo && (
+        <button
+          onClick={() => { setClickInfo(null); markerRef.current?.remove(); markerRef.current = null }}
+          style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+          aria-label="Clear marker"
+        >×</button>
+      )}
+    </div>
+    {clickInfo ? (
+      <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
+          <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+          {clickInfo.status === 'querying'
+            ? 'Querying…'
+            : clickInfo.valueC !== null
+            ? `${clickInfo.valueC.toFixed(1)} °C`
+            : 'No data'}
+        </div>
+      </>
+    ) : (
+      <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic' }}>
+        Select a point to inspect its value.
+      </div>
+    )}
+    </>
+  )
+
   return (
     <div
       style={{
@@ -496,266 +792,109 @@ export default function Map() {
     >
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* ── Left sidebar: data controls only ── */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: 260,
-          background: 'rgba(22,25,30,0.96)',
-          borderRight: `1px solid ${BORDER}`,
-          backdropFilter: 'blur(6px)',
-          display: 'flex',
-          flexDirection: 'column',
-          color: TEXT,
-          fontSize: 13,
-          zIndex: 10,
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid ${BORDER}` }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 5, lineHeight: 1.3 }}>
-            MODIS Land Surface Temperature
-          </div>
-          <div style={{ fontSize: 11, color: DIM, lineHeight: 1.6 }}>
-            Demo: GitHub Actions as free parallel compute +{' '}
-            <a href="https://icechunk.io" target="_blank" rel="noopener noreferrer" style={{ color: ACCENT, textDecoration: 'none' }}>Icechunk</a>
-            {' '}as a versioned Zarr v3 store.
-            376 tiles written concurrently with zero conflicts.
-            <br />
-            NASA MODIS MYD11C3 v6.1 · 0.01° (~1 km) · annual mean &amp; max · 2020–2022
-            <br />
-            <a
-              href="https://github.com/egagli/icechunk_github_actions_demo"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: ACCENT, textDecoration: 'none' }}
-            >
-              egagli/icechunk_github_actions_demo ↗
-            </a>
-          </div>
-        </div>
 
-        {/* Controls */}
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-          <Section label="Variable">
-            {(Object.keys(VARIABLE_CONFIGS) as Variable[]).map((v) => (
-              <button key={v} onClick={() => handleVariableChange(v)} style={chipStyle(v === variable)}>
-                {VARIABLE_CONFIGS[v].label}
-              </button>
-            ))}
-          </Section>
-
-          <Section label="Year">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {YEARS.map((y) => (
-                <button
-                  key={y}
-                  onClick={() => { if (y !== year) track('map_time_change', { year: y }); setYear(y) }}
-                  style={{ ...chipStyle(y === year), flex: 1, textAlign: 'center' }}
-                >
-                  {y}
-                </button>
-              ))}
-            </div>
-          </Section>
-
-          <Section label="Colormap">
-            <select
-              value={colormap}
-              onChange={(e) => setColormap(e.target.value)}
-              style={{
-                width: '100%', padding: '6px 8px', borderRadius: 4,
-                background: '#1e2128', color: TEXT, border: `1px solid ${BORDER}`,
-                fontSize: 13, cursor: 'pointer',
-              }}
-            >
-              {COLORMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <div style={{ height: 10, borderRadius: 3, marginTop: 8, background: gradient }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 11, color: DIM }}>
-              <span>{clim[0]}°</span>
-              <span>{climMid.toFixed(0)}°</span>
-              <span>{clim[1]}°</span>
-            </div>
-          </Section>
-
-          <Section label="Range (°C)">
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="number" value={climInputs[0]}
-                onChange={(e) => handleClimInputChange(0, e.target.value)}
-                onBlur={() => commitClimInput(0)}
-                onKeyDown={(e) => { if (e.key === 'Enter') commitClimInput(0) }}
-                style={numInputStyle}
-              />
-              <div style={{ flex: 1, height: 6, borderRadius: 3, background: gradient }} />
-              <input
-                type="number" value={climInputs[1]}
-                onChange={(e) => handleClimInputChange(1, e.target.value)}
-                onBlur={() => commitClimInput(1)}
-                onKeyDown={(e) => { if (e.key === 'Enter') commitClimInput(1) }}
-                style={numInputStyle}
-              />
-            </div>
-          </Section>
-
-          <Section label={`Opacity — ${Math.round(opacity * 100)}%`}>
-            <input
-              type="range" min={0} max={1} step={0.01} value={opacity}
-              onChange={(e) => setOpacity(Number(e.target.value))}
-              style={{ width: '100%', accentColor: ACCENT, cursor: 'pointer' }}
-            />
-          </Section>
-
-          {isLoading && <StatusRow>Loading chunks…</StatusRow>}
-        </div>
-      </div>
-
-      {/* ── Top-right: Basemap + Projection ── */}
-      <FloatingCard style={{ top: 16, right: 16, width: 260 }}>
-        <Section label="Basemap">
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[{ label: 'Dark', value: false }, { label: 'Satellite', value: true }].map((opt) => (
-              <button
-                key={String(opt.value)}
-                onClick={() => {
-                  if (opt.value !== showSatellite) track('map_basemap_change', { basemap: opt.value ? 'satellite' : 'dark' })
-                  setShowSatellite(opt.value)
-                }}
-                style={{ ...chipStyle(showSatellite === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </Section>
-        <div style={{ marginTop: 14 }}>
-          <Section label="Projection">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[{ label: 'Globe', value: true }, { label: 'Mercator', value: false }].map((opt) => (
-                <button
-                  key={String(opt.value)}
-                  onClick={() => setGlobeProjection(opt.value)}
-                  style={{ ...chipStyle(globeProjection === opt.value), flex: 1, textAlign: 'center', marginBottom: 0 }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </Section>
-        </div>
-      </FloatingCard>
-
-      {/* ── Top-right: Overlay controls (below Basemap+Projection card) ── */}
-      <FloatingCard style={{ top: 162, right: 16, width: 260, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
-        <button
-          onClick={() => { track('map_tile_status_toggle', { visible: !showTiles }); setShowTiles((p) => !p) }}
-          style={chipStyle(showTiles)}
-        >
-          Processing grid &amp; tile status
-        </button>
-
-        {showTiles && (
-          <>
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8,
-              padding: '8px 10px', background: '#1e2128', borderRadius: 4, border: `1px solid ${BORDER}`,
-            }}>
-              {Object.entries(TILE_STATUS_META).map(([, { color, label }]) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: DIM }}>{label}</span>
-                </div>
-              ))}
-            </div>
-
-            {tileClickInfo ? (
-              <div style={{
-                marginTop: 8, padding: '14px', background: '#1e2128',
-                borderRadius: 6, border: `1px solid ${BORDER}`,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{
-                      width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                      background: TILE_STATUS_META[tileClickInfo.status]?.color ?? TILE_COLOR_UNKNOWN,
-                    }} />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
-                      {TILE_STATUS_META[tileClickInfo.status]?.label ?? tileClickInfo.status}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setTileClickInfo(null)}
-                    style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
-                    aria-label="Clear tile selection"
-                  >×</button>
-                </div>
-                <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                  {(['row', 'col'] as const).map((k) => (
-                    <div key={k}>
-                      <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-                        {k}
-                      </div>
-                      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-                        {String(tileClickInfo[k])}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {Object.entries(tileClickInfo)
-                    .filter(([k]) => !['row', 'col', 'status'].includes(k))
-                    .map(([k, v]) => (
-                      <CoordRow key={k} label={propLabel(k)} value={formatPropValue(v)} />
+      {isSheet ? (
+        <>
+          <BottomSheet
+            title={title}
+            state={sheetState}
+            onState={setSheetState}
+            onCover={setSheetCover}
+            peek={
+              <>
+                <div className="m-segrow">
+                  <div className="m-seg" role="group" aria-label="Variable">
+                    {(Object.keys(VARIABLE_CONFIGS) as Variable[]).map((v) => (
+                      <button key={v} type="button" aria-pressed={v === variable} aria-label={VARIABLE_CONFIGS[v].label}
+                        className={v === variable ? 'on' : ''} onClick={() => handleVariableChange(v)}>
+                        {VARIABLE_CONFIGS[v].label.split(' ')[0]}
+                      </button>
                     ))}
+                  </div>
+                  <div className="m-seg" role="group" aria-label="Year">
+                    {YEARS.map((y) => (
+                      <button key={y} type="button" aria-pressed={y === year} className={y === year ? 'on' : ''}
+                        onClick={() => { if (y !== year) track('map_time_change', { year: y }); setYear(y) }}>
+                        {y}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <div className="m-colorbar" style={{ background: gradient }} />
+                <div className="m-colorbar-labels">
+                  <span>{clim[0]}°</span>
+                  <span>{VARIABLE_CONFIGS[variable].label} · °C</span>
+                  <span>{clim[1]}°</span>
+                </div>
+              </>
+            }
+          >
+            <div className="m-card">{inspectContent}</div>
+            <div className="m-colormap">{colormapSection}</div>
+            {rangeSection}
+            {opacitySection}
+            <div className="m-about">{aboutText}</div>
+            <div className="m-card">{basemapContent}</div>
+            <div className="m-card">{overlayContent}</div>
+          </BottomSheet>
+          {isLoading && <div className="m-loading" role="status"><i aria-hidden="true" />Loading chunks…</div>}
+        </>
+      ) : (
+        <>
+          {/* ── Left sidebar: data controls only ── */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 260,
+              background: 'rgba(22,25,30,0.96)',
+              borderRight: `1px solid ${BORDER}`,
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              flexDirection: 'column',
+              color: TEXT,
+              fontSize: 13,
+              zIndex: 10,
+            }}
+          >
+            {/* Header */}
+            <div style={{ padding: '20px 20px 14px', borderBottom: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 5, lineHeight: 1.3 }}>
+                {title}
               </div>
-            ) : (
-              <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic', marginTop: 8 }}>
-                Click a tile to inspect its status.
+              <div style={{ fontSize: 11, color: DIM, lineHeight: 1.6 }}>
+                {aboutText}
               </div>
-            )}
-          </>
-        )}
-      </FloatingCard>
+            </div>
 
-      {/* ── Bottom-right: Inspect result (always visible) ── */}
-      <FloatingCard style={{ bottom: 16, right: 16, width: 260 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-          <div style={{ fontSize: 10, color: DIM, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-            Inspect
-          </div>
-          {clickInfo && (
-            <button
-              onClick={() => { setClickInfo(null); markerRef.current?.remove(); markerRef.current = null }}
-              style={{ background: 'none', border: 'none', color: DIM, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
-              aria-label="Clear marker"
-            >×</button>
-          )}
-        </div>
-        {clickInfo ? (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-              <CoordRow label="Lat" value={`${clickInfo.lat.toFixed(4)}°`} />
-              <CoordRow label="Lon" value={`${clickInfo.lng.toFixed(4)}°`} />
+            {/* Controls */}
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {variableSection}
+              {yearSection}
+              {colormapSection}
+              {rangeSection}
+              {opacitySection}
+              {isLoading && <StatusRow>Loading chunks…</StatusRow>}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-              {clickInfo.status === 'querying'
-                ? 'Querying…'
-                : clickInfo.valueC !== null
-                ? `${clickInfo.valueC.toFixed(1)} °C`
-                : 'No data'}
-            </div>
-          </>
-        ) : (
-          <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic' }}>
-            Select a point to inspect its value.
           </div>
-        )}
-      </FloatingCard>
+
+          {/* ── Top-right: Basemap + Projection ── */}
+          <FloatingCard style={{ top: 16, right: 16, width: 260 }}>
+            {basemapContent}
+          </FloatingCard>
+
+          {/* ── Top-right: Overlay controls (below Basemap+Projection card) ── */}
+          <FloatingCard style={{ top: 162, right: 16, width: 260, maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+            {overlayContent}
+          </FloatingCard>
+
+          {/* ── Bottom-right: Inspect result (always visible) ── */}
+          <FloatingCard style={{ bottom: 16, right: 16, width: 260 }}>
+            {inspectContent}
+          </FloatingCard>
+        </>
+      )}
     </div>
   )
 }
@@ -786,7 +925,7 @@ function FloatingCard({ style, children }: { style: React.CSSProperties; childre
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{
+      <div className="m-section-label" style={{
         fontSize: 10, color: DIM, textTransform: 'uppercase',
         letterSpacing: '0.08em', fontWeight: 600, marginBottom: 8,
       }}>
